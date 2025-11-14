@@ -11,6 +11,9 @@
 
 <!-- Materials -->
 
+	<bsdf type="diffuse" id="mat-itu_concrete.001" name="mat-itu_concrete.001">
+		<rgb value="0.800000 0.800000 0.800000" name="reflectance"/>
+	</bsdf>
 	<bsdf type="diffuse" id="mat-itu_concrete" name="mat-itu_concrete">
 		<rgb value="0.800000 0.800000 0.800000" name="reflectance"/>
 	</bsdf>
@@ -23,9 +26,9 @@
 	<shape type="ply" id="elm__2" name="elm__2">
 		<string name="filename" value="meshes/Plane.ply"/>
 		<boolean name="face_normals" value="true"/>
-		<ref id="mat-itu_concrete" name="bsdf"/>
+		<ref id="mat-itu_concrete.001" name="bsdf"/>
 	</shape>
-	<shape type="ply" id="elm__3" name="elm__3">
+	<shape type="ply" id="elm__4" name="elm__4">
 		<string name="filename" value="meshes/map_7_osm_buildings.ply"/>
 		<boolean name="face_normals" value="true"/>
 		<ref id="mat-itu_concrete" name="bsdf"/>
