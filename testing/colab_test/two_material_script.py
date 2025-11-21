@@ -1,5 +1,4 @@
 # This script assigns two different materials to objects in a Blender scene:
-
 import bpy
 
 
