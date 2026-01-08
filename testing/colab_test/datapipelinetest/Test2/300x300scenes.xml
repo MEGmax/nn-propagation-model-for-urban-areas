@@ -19,10 +19,10 @@
 		<float name="near_clip" value="0.100000"/>
 		<float name="far_clip" value="100.000000"/>
 		<transform name="to_world">
-			<rotate x="1" angle="-153.5592908827048"/>
-			<rotate y="1" angle="-46.691938147394204"/>
-			<rotate z="1" angle="-179.999991348578"/>
-			<translate value="7.358891 4.958309 6.925791"/>
+			<rotate x="1" angle="116.44070980054053"/>
+			<rotate y="1" angle="5.419622430558914e-06"/>
+			<rotate z="1" angle="-133.30805320118378"/>
+			<translate value="7.358891 -6.925791 4.958309"/>
 		</transform>
 		<sampler type="independent" name="sampler">
 			<integer name="sample_count" value="$spp"/>
@@ -42,7 +42,7 @@
 <!-- Emitters -->
 
 	<emitter type="point" id="elm__1" name="elm__1">
-		<point name="position" x="4.076245307922363" y="5.903861999511719" z="-1.0054539442062378"/>
+		<point name="position" x="4.076245307922363" y="1.0054539442062378" z="5.903861999511719"/>
 		<rgb value="79.577469 79.577469 79.577469" name="intensity"/>
 	</emitter>
 
