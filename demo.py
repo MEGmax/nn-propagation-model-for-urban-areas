@@ -78,7 +78,7 @@ class TinyUNet(nn.Module):
 # ------------------------------------------------------------
 
 def make_dummy_input(size=64):
-    elev = torch.randn(1, 1, size, size)       # elevation map
+    elev = torch.randn(1, 1, size, size)       # elevation map (khushi can generate )
     freq = torch.ones(1, 1, size, size) * 2.4  # constant 2.4 GHz (distance / wavelength instead of pure freq, normalize this)
 
     ##can add other channels if needed
