@@ -1,9 +1,15 @@
 import random
 import os
 import bpy
+import shutil
+import math
+import sys
+import argparse
+
+from pathlib import Path
 
 # Command to run in terminal (depends on your Blender installation path):
-# /Applications/Blender.app/Contents/MacOS/Blender --background --python ./studio_setup.py
+# /Applications/Blender.app/Contents/MacOS/Blender --background --python ./studio_setup.py --
 
 NUM_BUILDINGS_MIN = 10
 NUM_BUILDINGS_MAX = 20
@@ -14,56 +20,124 @@ MIN_HEIGHT = 1.0
 MAX_HEIGHT = 8.0
 
 AREA_SIZE = 8
+EXCLUSION_RADIUS = 2.0
+
+BASE_DIR = Path(__file__).resolve().parent
+SCENE_DIR = BASE_DIR / "automated_scenes"
 
 
-# select and delete all objects
-bpy.ops.object.select_all(action='SELECT')
-bpy.ops.object.delete()
+def parse_arguments():
+    # all args after `--` are in sys.argv
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--num-scenes", type=int, default=5)
+    parser.add_argument("--buildings-in-center", type=bool, default=False)
+    
+    # Blender adds its own args before the '--', so skip them
+    if "--" in sys.argv:
+        args = parser.parse_args(sys.argv[sys.argv.index("--") + 1:])
+    else:
+        args = parser.parse_args()
+    
+    return args
 
-# delete old materials
-for mat in bpy.data.materials:
-    bpy.data.materials.remove(mat, do_unlink=True)
 
-# declare your materials
-concrete = bpy.data.materials.new(name='itu_concrete')
-soil = bpy.data.materials.new(name='medium_dry_ground')
+def repository_setup() -> None:
+    # if repo does not exist, create it
+    if not os.path.exists(SCENE_DIR):
+        os.makedirs(SCENE_DIR)
+        print(f"Created directory at {SCENE_DIR}")
+    # if repo exists, clear it
+    else:
+        for item in os.listdir(SCENE_DIR):
+            item_path = os.path.join(SCENE_DIR, item)
+            if os.path.isfile(item_path) or os.path.islink(item_path):
+                os.unlink(item_path)
+            else:
+                shutil.rmtree(item_path)
+        print(f"Cleared directory at {SCENE_DIR}")
 
-# add plane
-bpy.ops.mesh.primitive_plane_add(size=(AREA_SIZE * 2), enter_editmode=False, align='WORLD', location=(0, 0, 0), scale=(1, 1, 1))
-ground = bpy.context.active_object
-ground.data.materials.append(soil)
 
-# add cubes to be like buildings
-num_buildings = random.randint(NUM_BUILDINGS_MIN, NUM_BUILDINGS_MAX)
+def scene_generation(buildings_in_center: bool) -> None:
 
-for i in range(num_buildings):
-    width = random.uniform(MIN_SIZE, MAX_SIZE)
-    depth = random.uniform(MIN_SIZE, MAX_SIZE)
-    height = random.uniform(MIN_HEIGHT, MAX_HEIGHT)
+    # select and delete all objects
+    bpy.ops.object.select_all(action='SELECT')
+    bpy.ops.object.delete()
 
-    x = random.uniform(-AREA_SIZE + width/2, AREA_SIZE - width/2)
-    y = random.uniform(-AREA_SIZE + depth/2, AREA_SIZE - depth/2)
+    # delete old materials
+    for mat in bpy.data.materials:
+        bpy.data.materials.remove(mat, do_unlink=True)
 
-    # place cube at half height so it is not buried
-    z = height / 2
+    # declare your materials
+    concrete = bpy.data.materials.new(name='itu_concrete')
+    soil = bpy.data.materials.new(name='itu_medium_dry_ground')
 
-    # adding the cube at location x, y, z
-    bpy.ops.mesh.primitive_cube_add(location=(x, y, z))
-    building = bpy.context.active_object
+    # add plane
+    bpy.ops.mesh.primitive_plane_add(size=(AREA_SIZE * 2), enter_editmode=False, align='WORLD', location=(0, 0, 0), scale=(1, 1, 1))
+    ground = bpy.context.active_object
+    ground.data.materials.append(soil)
 
-    # scale cube (devide by 2 becasue default cube is size (2, 2, 2)
-    building.scale = (width / 2, depth / 2, height / 2)
+    # add cubes to be like buildings
+    num_buildings = random.randint(NUM_BUILDINGS_MIN, NUM_BUILDINGS_MAX)
 
-    building.name = f"Building_{i}"
-    building.data.materials.append(concrete)
+    for i in range(num_buildings):
+        while True:
+            width = random.uniform(MIN_SIZE, MAX_SIZE)
+            depth = random.uniform(MIN_SIZE, MAX_SIZE)
+            height = random.uniform(MIN_HEIGHT, MAX_HEIGHT)
 
-# export to Mitsuba XML
-xml_filepath = os.path.abspath("studio_setup.xml")
+            x = random.uniform(-AREA_SIZE + width/2, AREA_SIZE - width/2)
+            y = random.uniform(-AREA_SIZE + depth/2, AREA_SIZE - depth/2)
 
-try:
-    bpy.ops.export_scene.mitsuba(filepath=xml_filepath, check_existing=False)
-    print(f"Successfully exported scene to {xml_filepath}")
-except Exception as e:
-    print(f"Error during Mitsuba export: {e}")
+            # place cube at half height so it is not buried
+            z = height / 2
 
-print("Mitsuba XML export complete.")
+            if not buildings_in_center:
+                # make sure the building is not too close to the center (0, 0)
+                half_diagonal = math.sqrt((width/2)**2 + (depth/2)**2)
+                min_distance = EXCLUSION_RADIUS + half_diagonal
+                distance_center = math.hypot(x, y)
+
+                if distance_center >= min_distance:
+                    break
+            else:
+                break
+
+        # adding the cube at location x, y, z
+        bpy.ops.mesh.primitive_cube_add(location=(x, y, z))
+        building = bpy.context.active_object
+
+        # scale cube (devide by 2 becasue default cube is size (2, 2, 2)
+        building.scale = (width / 2, depth / 2, height / 2)
+
+        building.name = f"Building_{i}"
+        building.data.materials.append(concrete)
+    
+    # select all objects and apply transforms for export
+    bpy.ops.object.select_all(action='SELECT')
+    bpy.ops.object.transform_apply(location=True, rotation=True, scale=True)
+
+
+def export_scene(scene_ID: int) -> None:
+
+    # create directory to save xml and mesh directory
+    os.makedirs(SCENE_DIR / f"scene{scene_ID}")
+    # export to Mitsuba XML
+    xml_filepath = os.path.abspath(SCENE_DIR / f"scene{scene_ID}" / f"scene{scene_ID}.xml")
+
+    try:
+        bpy.ops.export_scene.mitsuba(filepath=xml_filepath, check_existing=False, axis_forward='Y', axis_up='Z')
+        print(f"Successfully exported scene to {xml_filepath}")
+    except Exception as e:
+        print(f"Error during Mitsuba export: {e}")
+
+
+def main():
+    args = parse_arguments()
+    repository_setup()
+    for i in range(args.num_scenes):
+        scene_generation(args.buildings_in_center)
+        export_scene(i)
+
+
+if __name__ == "__main__":
+    main()
