@@ -51,7 +51,7 @@ for i in range(100):
         max_depth=32,  # Maximum number of ray scene interactions
         samples_per_tx=10**7,  # If you increase: less noise, but more memory required
         cell_size=(0.4, 0.4),  # Resolution of the radio map
-        center=[0, 0, 0],  # Center of the radio map
+        center=[0, 0, 1.5],  # Center of the radio map
         size=[16, 16],  # Total size of the radio map
         orientation=[0, 0, 0],
     )  # Orientation of the radio map, e.g., could be also vertical
