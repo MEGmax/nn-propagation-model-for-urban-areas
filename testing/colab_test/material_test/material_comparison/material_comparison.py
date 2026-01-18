@@ -6,8 +6,8 @@ from sionna.rt import load_scene, PlanarArray, Transmitter, Receiver, Camera,\
 import matplotlib.pyplot as plt
 
 #rss_concrete = np.load("nn-propagation-model-for-urban-areas/testing/colab_test/material_test/material_comparison/concrete.npy", allow_pickle=True)
-rss_glass = np.load("nn-propagation-model-for-urban-areas/testing/colab_test/material_test/material_comparison/glass.npy", allow_pickle=True)
-rss_concrete = np.load("nn-propagation-model-for-urban-areas/testing/colab_test/material_test/material_comparison/concrete.npy", allow_pickle=True)
+rss_glass = np.load("/Users/khushipatel/Desktop/capstone/nn-propagation-model-for-urban-areas/testing/colab_test/material_test/material_comparison/glass.npy", allow_pickle=True)
+rss_concrete = np.load("/Users/khushipatel/Desktop/capstone/nn-propagation-model-for-urban-areas/testing/colab_test/material_test/material_comparison/concrete.npy", allow_pickle=True)
 
 
 # Convert to dBm
@@ -29,15 +29,20 @@ plt.title("RSS")
 #plt.show()
 plt.close()
 
-# Calculate Difference 
+# Handle -inf values for MAE calculation
+rss_concrete_dbm[rss_concrete_dbm == -np.inf] = 99999
+rss_glass_dbm[rss_glass_dbm == -np.inf] = 99999
 
-print(rss_concrete_dbm.min(), rss_concrete_dbm.max())
+# set -inf values back to minimum for difference calculation
+rss_concrete_dbm[rss_concrete_dbm == 99999] = rss_concrete_dbm.min()
+rss_glass_dbm[rss_glass_dbm == 99999] = rss_glass_dbm.min()
 
 # Calculate Mean Absolute Error (MAE)
 mae_db = np.mean(np.abs(rss_concrete - rss_glass))
 print(f"Mean Absolute Error (MAE) between concrete and glass: {mae_db:.2f} (linear scale)")
+
 mae_dbm = np.mean(np.abs(rss_concrete_dbm - rss_glass_dbm))
-print((rss_concrete_dbm - rss_glass_dbm)[0])
+#print((rss_concrete_dbm - rss_glass_dbm)[0])
 print(f"Mean Absolute Error (MAE) between concrete and glass: {mae_dbm:.2f} dBm")
 
 # Calculate dB difference with rss_concrete - rss_glass
