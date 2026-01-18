@@ -130,7 +130,6 @@ def export_scene(scene_ID: int) -> None:
     except Exception as e:
         print(f"Error during Mitsuba export: {e}")
 
-
 def main():
     args = parse_arguments()
     repository_setup()
