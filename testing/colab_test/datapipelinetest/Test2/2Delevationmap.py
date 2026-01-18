@@ -13,7 +13,6 @@ H_MAX = 27.6307                          # tallest building height (meters)
 
 
 #load mesh
-
 print("Loading mesh...")
 mesh = trimesh.load(PLY_PATH)
 
