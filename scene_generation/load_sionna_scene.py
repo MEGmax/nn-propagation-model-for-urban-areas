@@ -39,7 +39,7 @@ for i in range(100):
     )
 
     # place transmitter at origin
-    tx = Transmitter("tx", [0, 0, 0], [0.0, 0.0, 0.0])
+    tx = Transmitter("tx", [0, 0, 1.5], [0.0, 0.0, 0.0])
     scene.add(tx)
     my_cam = Camera(position=[0, 0, 30], look_at=tx.position)
 
