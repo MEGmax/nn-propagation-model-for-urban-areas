@@ -68,6 +68,9 @@ for i in range(100):
     # 2. Save the figure manually using Matplotlib
     plt.savefig(f"automated_scenes/scene{i}/rss_map{i}.png", dpi=300)
 
+    # Save .npy file of the rss values
+    np.save(f"automated_scenes/scene{i}/rss_values{i}.npy", rm.rss)
+
     # 3. Close the figure to free up memory (important for loops!)
     plt.close()
 
