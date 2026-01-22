@@ -22,12 +22,10 @@ BASE_DIR = Path(__file__).resolve().parent
 SCENE_DIR = BASE_DIR / "automated_scenes"
 TRUTH_DIR = BASE_DIR / "ground_truth"
 
-for i in range(100):
+for i in range(len(list(Path(SCENE_DIR).iterdir()))):
+    print(f"Rendering scene {i}...")
     scene = load_scene(SCENE_DIR / f"scene{i}" / f"scene{i}.xml")
     # scene = load_scene(TRUTH_DIR / "ground_truth.xml")
-
-    for obj in scene.objects.values():
-        print(f"{obj.name}: {obj.radio_material.name}")
 
     scene.tx_array = PlanarArray(
         num_rows=4,
@@ -41,6 +39,7 @@ for i in range(100):
     # place transmitter at origin
     tx = Transmitter("tx", [0, 0, 1.5], [0.0, 0.0, 0.0])
     scene.add(tx)
+    # Prof offered to change camera location to 2 meters?
     my_cam = Camera(position=[0, 0, 30], look_at=tx.position)
 
     # Instantiate the radio map solver
@@ -57,21 +56,21 @@ for i in range(100):
     )  # Orientation of the radio map, e.g., could be also vertical
 
     # Save the rendered image to your project folder
-    # scene.render_to_file(camera=my_cam, radio_map=rm, filename=f"automated_scenes/scene{i}/radio_map{i}.png")
+    scene.render_to_file(camera=my_cam, radio_map=rm, filename=f"automated_scenes/scene{i}/radio_map{i}.png")
     # scene.render_to_file(camera=my_cam, radio_map=rm, filename="ground_truth/radio_map.png")
 
-    scene.render(camera=my_cam, radio_map=rm)
+    #scene.render(camera=my_cam, radio_map=rm)
     # 1. Generate the visualization (this creates a Matplotlib figure)
     # We set 'show_plot=False' to prevent windows from popping up in a loop
-    rm.show(metric="rss")
+    #rm.show(metric="rss")
 
     # 2. Save the figure manually using Matplotlib
-    plt.savefig(f"automated_scenes/scene{i}/rss_map{i}.png", dpi=300)
+    #plt.savefig(f"automated_scenes/scene{i}/rss_map{i}.png", dpi=300)
 
     # Save .npy file of the rss values
     np.save(f"automated_scenes/scene{i}/rss_values{i}.npy", rm.rss)
 
     # 3. Close the figure to free up memory (important for loops!)
-    plt.close()
+    # plt.close()
 
-    print(f"Done rendering scene {i}"),
+    print(f"Done rendering scene {i}")
