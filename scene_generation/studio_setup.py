@@ -5,11 +5,17 @@ import shutil
 import math
 import sys
 import argparse
+import mathutils
+import numpy as np
 
 from pathlib import Path
 
 # Command to run in terminal (depends on your Blender installation path):
 # /Applications/Blender.app/Contents/MacOS/Blender --background --python ./studio_setup.py --
+
+# Use seeds for debugging
+# np.random.seed(42)
+# random.seed(42)
 
 NUM_BUILDINGS_MIN = 10
 NUM_BUILDINGS_MAX = 20
@@ -31,13 +37,13 @@ def parse_arguments():
     parser = argparse.ArgumentParser()
     parser.add_argument("--num-scenes", type=int, default=5)
     parser.add_argument("--buildings-in-center", type=bool, default=False)
-    
+ 
     # Blender adds its own args before the '--', so skip them
     if "--" in sys.argv:
         args = parser.parse_args(sys.argv[sys.argv.index("--") + 1:])
     else:
         args = parser.parse_args()
-    
+  
     return args
 
 
@@ -56,12 +62,17 @@ def repository_setup() -> None:
                 shutil.rmtree(item_path)
         print(f"Cleared directory at {SCENE_DIR}")
 
-
 def scene_generation(buildings_in_center: bool) -> None:
 
     # select and delete all objects
     bpy.ops.object.select_all(action='SELECT')
     bpy.ops.object.delete()
+
+    # clean orphan data
+    print(f"meshes count before deletion: {len(bpy.data.meshes)}")
+    for mesh in bpy.data.meshes:
+        bpy.data.meshes.remove(mesh)
+    print(f"meshes count after deletion: {len(bpy.data.meshes)}")
 
     # delete old materials
     for mat in bpy.data.materials:
@@ -103,28 +114,25 @@ def scene_generation(buildings_in_center: bool) -> None:
                 break
 
         # adding the cube at location x, y, z
-        bpy.ops.mesh.primitive_cube_add(location=(x, y, z))
+        bpy.ops.mesh.primitive_cube_add(location=(x, y, z), scale=(width / 2, depth / 2, height / 2))
+        # building = bpy.context.selected_objects[0]
         building = bpy.context.active_object
-
-        # scale cube (devide by 2 becasue default cube is size (2, 2, 2)
-        building.scale = (width / 2, depth / 2, height / 2)
-
         building.name = f"Building_{i}"
         building.data.materials.append(concrete)
-    
-    # select all objects and apply transforms for export
-    bpy.ops.object.select_all(action='SELECT')
-    bpy.ops.object.transform_apply(location=True, rotation=True, scale=True)
 
 
 def export_scene(scene_ID: int) -> None:
 
     # create directory to save xml and mesh directory
     os.makedirs(SCENE_DIR / f"scene{scene_ID}")
+
     # export to Mitsuba XML
     xml_filepath = os.path.abspath(SCENE_DIR / f"scene{scene_ID}" / f"scene{scene_ID}.xml")
 
     try:
+        bpy.context.view_layer.update()
+        depgraph = bpy.context.evaluated_depsgraph_get()
+        depgraph.update()
         bpy.ops.export_scene.mitsuba(filepath=xml_filepath, check_existing=False, axis_forward='Y', axis_up='Z')
         print(f"Successfully exported scene to {xml_filepath}")
     except Exception as e:
@@ -134,6 +142,7 @@ def main():
     args = parse_arguments()
     repository_setup()
     for i in range(args.num_scenes):
+        print("GENERATION SCENE ", i)
         scene_generation(args.buildings_in_center)
         export_scene(i)
 
