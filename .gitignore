@@ -1,2 +1,4 @@
 venv
-
+/scene_generation/automated_scenes
+/scene_generation/ground_truth
+.github/copilot-instructions.md
