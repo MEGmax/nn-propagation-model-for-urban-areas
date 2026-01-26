@@ -39,7 +39,7 @@ for i in range(len(list(Path(SCENE_DIR).iterdir()))):
         num_cols=4,
         vertical_spacing=0.5,
         horizontal_spacing=0.5,
-        pattern="tr38901",
+        pattern="tr38901",  # where we declare the frequency
         polarization="V",
     )
 
@@ -55,45 +55,27 @@ for i in range(len(list(Path(SCENE_DIR).iterdir()))):
     rm = rm_solver(
         scene,
         max_depth=32,  # Maximum number of ray scene interactions
-        samples_per_tx=10**7,  # If you increase: less noise, but more memory required
-        cell_size=(0.4, 0.4),  # Resolution of the radio map
+        samples_per_tx=10**8,  # If you increase: less noise, but more memory required
+        cell_size=(0.15, 0.15),  # Resolution of the radio map
         center=[0, 0, 1.5],  # Center of the radio map
         size=[16, 16],  # Total size of the radio map
         orientation=[0, 0, 0],
     )  # Orientation of the radio map, e.g., could be also vertical
 
-    # Save the rendered image to your project folder
-    scene.render_to_file(camera=my_cam, radio_map=rm, filename=f"automated_scenes/scene{i}/radio_map{i}.png")
-    # scene.render_to_file(camera=my_cam, radio_map=rm, filename="ground_truth/radio_map.png")
-
-    #scene.render(camera=my_cam, radio_map=rm)
-    # 1. Generate the visualization (this creates a Matplotlib figure)
-    # We set 'show_plot=False' to prevent windows from popping up in a loop
-    #rm.show(metric="rss")
-
-    # 2. Save the figure manually using Matplotlib
-    #plt.savefig(f"automated_scenes/scene{i}/rss_map{i}.png", dpi=300)
-
-    # Save .npy file of the rss values
-    np.save(f"automated_scenes/scene{i}/rss_values{i}.npy", rm.rss)
-
-    # 3. Close the figure to free up memory (important for loops!)
-    # plt.close()
-
-    # Save the scene configuration to a JSON file
-
-    # Ensure folder exists
-    scene_path = SCENE_DIR / f"scene{i}"
-    scene_path.mkdir(parents=True, exist_ok=True)
-
+    # save configuration of scene
     scene_config = {
-        "frequency": float(np.array(scene.frequency)),
-        "tx_position": [float(np.array(tx.position.x)), float(np.array(tx.position.y)), float(np.array(tx.position.z))],
-        "tx_orientation": [float(np.array(tx.orientation.x)), float(np.array(tx.orientation.y)), float(np.array(tx.orientation.z))],
+        "frequency": np.array(scene.frequency).item(),
+        "tx_position": [np.array(tx.position.x).item(), np.array(tx.position.y).item(), np.array(tx.position.z).item()],
+        "tx_orientation": [np.array(tx.orientation.x).item(), np.array(tx.orientation.y).item(), np.array(tx.orientation.z).item()],
     }
-    metadata_path = scene_path / "tx_metadata.json"
+    metadata_path = SCENE_DIR / f"scene{i}" / "tx_metadata.json"
 
     with open(metadata_path, "w") as f:
         json.dump(scene_config, f, indent=4)
+
+    # Render scenes to rss arrays
+    scene.render(camera=my_cam, radio_map=rm)
+    rm.show(metric="rss")
+    np.save(f"automated_scenes/scene{i}/rss_values{i}.npy", rm.rss)
 
     print(f"Done rendering scene {i}")
