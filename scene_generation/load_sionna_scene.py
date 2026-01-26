@@ -2,9 +2,12 @@ import matplotlib.pyplot as plt
 import numpy as np
 import tensorflow as tf
 import sionna.rt
+import json
 
 from sionna.rt import load_scene, PlanarArray, Transmitter, Receiver, Camera, RadioMapSolver
 from pathlib import Path
+
+import random
 
 # pip install sionna
 # pip install tensorflow
@@ -26,6 +29,10 @@ for i in range(len(list(Path(SCENE_DIR).iterdir()))):
     print(f"Rendering scene {i}...")
     scene = load_scene(SCENE_DIR / f"scene{i}" / f"scene{i}.xml")
     # scene = load_scene(TRUTH_DIR / "ground_truth.xml")
+
+    #set frequency in between 900 MHz and 5.3 GHz
+    scene.frequency = int(random.uniform(900e6, 5.3e9))
+    print(f"Set frequency to {scene.frequency} GHz")
 
     scene.tx_array = PlanarArray(
         num_rows=4,
@@ -72,5 +79,21 @@ for i in range(len(list(Path(SCENE_DIR).iterdir()))):
 
     # 3. Close the figure to free up memory (important for loops!)
     # plt.close()
+
+    # Save the scene configuration to a JSON file
+
+    # Ensure folder exists
+    scene_path = SCENE_DIR / f"scene{i}"
+    scene_path.mkdir(parents=True, exist_ok=True)
+
+    scene_config = {
+        "frequency": float(np.array(scene.frequency)),
+        "tx_position": [float(np.array(tx.position.x)), float(np.array(tx.position.y)), float(np.array(tx.position.z))],
+        "tx_orientation": [float(np.array(tx.orientation.x)), float(np.array(tx.orientation.y)), float(np.array(tx.orientation.z))],
+    }
+    metadata_path = scene_path / "tx_metadata.json"
+
+    with open(metadata_path, "w") as f:
+        json.dump(scene_config, f, indent=4)
 
     print(f"Done rendering scene {i}")
