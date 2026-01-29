@@ -8,6 +8,20 @@ from pathlib import Path
 import json
 from skimage.transform import resize
 
+# pip install scikit-image
+
+#creates a directory called data split into training, validation and testing that stores input and target tensors used as input for the nn model
+def createDataTensorsFromScenes(scenes_root: str, output_dir_input: str, output_dir_target: str):
+    scene_dirs = [d for d in Path(scenes_root).iterdir() if d.is_dir()]
+    os.makedirs(output_dir_input, exist_ok=True)
+    os.makedirs(output_dir_target, exist_ok=True)
+    for scene_dir in scene_dirs:
+        input_tensor, target_tensor = scene_to_tensor_simple(scene_dir)
+        scene_name = scene_dir.name
+        np.save(os.path.join(output_dir_input, f"{scene_name}_input.npy"), input_tensor)
+        np.save(os.path.join(output_dir_target, f"{scene_name}_target.npy"), target_tensor)
+    print(f"Saved tensors for {len(scene_dirs)} scenes to {output_dir_input} and {output_dir_target}")
+
 def scene_to_tensor_simple(scene_dir: str, distance_normalize=True, freq_log_scale=True):
     """
     Converts a scene folder into an ML-ready input tensor and RSS target tensor.
@@ -89,53 +103,37 @@ def scene_to_tensor_simple(scene_dir: str, distance_normalize=True, freq_log_sca
         freq_map.astype(np.float32)
     ], axis=-1)
 
-
     # Target tensor: RSS
 
     # Convert rss from dB to dBm
     rss_dbm = 10 * np.log10(rss) + 30
     target_tensor = rss_dbm.astype(np.float32)
 
-    
     # Permute target tensor to H x W X C
     target_tensor = np.transpose(target_tensor, (1, 2, 0))  # H x W x C
-
-
-    #model input visualization: elevation and rss side by side
-    elev = elevation_rs   # (40,40)
-    rss  = rss_dbm.squeeze()   # (40,40)
-
-    plt.figure(figsize=(12,4))
-
-    plt.subplot(1,3,1)
-    plt.title("Elevation")
-    plt.imshow(elev)
-    plt.colorbar()
-
-    plt.subplot(1,3,2)
-    plt.title("RSS")
-    plt.imshow(rss)
-    plt.colorbar()
-
-    plt.subplot(1,3,3)
-    plt.title("Elevation edges over RSS")
-    plt.imshow(rss, alpha=0.8)
-    plt.imshow(elev, alpha=0.35)
-    plt.colorbar()
-
-    plt.show()
 
     return input_tensor, target_tensor
 
 
-
-    
-# Example usage:
-
-scene_folder = Path("/Users/khushipatel/Desktop/capstone/nn-propagation-model-for-urban-areas/scene_generation/automated_scenes/scene0").resolve()
-print(scene_folder.exists())  # Should print True
-input_tensor, target_tensor = scene_to_tensor_simple(scene_folder)
-print("Input tensor shape:", input_tensor.shape)
-print("Target tensor shape:", target_tensor.shape)    
-
 # Create automation here to convert all scenes in a root directory
+scene_folder = Path("../scene_generation/automated_scenes").resolve()
+print(scene_folder.exists())  # Should print True
+SCENES_ROOT = str(scene_folder)
+
+# Choose dataset split: "training", "testing", or "validation"
+DATASET_SPLIT = "training"
+
+if DATASET_SPLIT == "training":
+    OUTPUT_DIR_INPUT = "data/training/input"
+    OUTPUT_DIR_TARGET = "data/training/target"
+elif DATASET_SPLIT == "testing":
+    OUTPUT_DIR_INPUT = "data/testing/input"
+    OUTPUT_DIR_TARGET = "data/testing/target"
+elif DATASET_SPLIT == "validation":
+    OUTPUT_DIR_INPUT = "data/validation/input"
+    OUTPUT_DIR_TARGET = "data/validation/target"
+else:
+    raise ValueError(f"Invalid DATASET_SPLIT: {DATASET_SPLIT}. Must be 'training', 'testing', or 'validation'")
+
+createDataTensorsFromScenes(SCENES_ROOT, OUTPUT_DIR_INPUT, OUTPUT_DIR_TARGET)
+print(f"Created data tensors in {OUTPUT_DIR_INPUT} and {OUTPUT_DIR_TARGET}")    
