@@ -86,10 +86,10 @@ def generate_elevation_map(meshes_dir, output_prefix):
     print(height_map.astype(np.float32))
 
     # Save raw grayscale
-    plt.imsave(f"{output_prefix}_raw.png", height_uint8, cmap="gray")
+    #plt.imsave(f"{output_prefix}_raw.png", height_uint8, cmap="gray")
 
     # Save .npy file of the height values normalized
-    np.save(f"{output_prefix}.npy", normalized.astype(np.float32))
+    #np.save(f"{output_prefix}.npy", normalized.astype(np.float32))
 
     #np.save(f"{output_prefix}.npy", height_map.astype(np.float32))
 

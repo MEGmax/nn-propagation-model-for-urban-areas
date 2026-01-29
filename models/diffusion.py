@@ -3,6 +3,7 @@
 
 import math
 from typing import Optional, Tuple
+from pathlib import Path
 
 import torch
 import torch.nn as nn
@@ -12,6 +13,7 @@ from torchvision import transforms
 from tqdm import tqdm
 import numpy as np
 import os
+import json
 
 # -------------------------
 # Utilities: Sinusoidal time embedding (like Transformer / DDPM)
@@ -90,7 +92,7 @@ class ResBlock(nn.Module):
 class Downsample(nn.Module):
     def __init__(self, channels):
         super().__init__()
-        self.op = nn.Conv2d(channels, channels, kernel_size=4, stride=2, padding=1)
+        self.op = nn.AvgPool2d(2)
 
     def forward(self, x):
         return self.op(x)
@@ -98,7 +100,7 @@ class Downsample(nn.Module):
 class Upsample(nn.Module):
     def __init__(self, channels):
         super().__init__()
-        self.op = nn.ConvTranspose2d(channels, channels, kernel_size=4, stride=2, padding=1)
+        self.op = nn.Upsample(scale_factor=2, mode='nearest')
 
     def forward(self, x):
         return self.op(x)
@@ -159,10 +161,12 @@ class TimeCondUNet(nn.Module):
         for mult in reversed(channel_mults):
             out_ch = base_ch * mult
             self.ups.append(Upsample(ch))
-            for _ in range(num_res_blocks):
-                # when concatenating skip, input channels will be (ch + skip_ch)
-                self.res_blocks_up.append(ResBlock(ch + out_ch, out_ch, time_emb_dim=time_emb_dim, cond_dim=cond_emb_dim))
-                ch = out_ch
+            # First resblock takes concatenated input (ch + out_ch)
+            self.res_blocks_up.append(ResBlock(ch + out_ch, out_ch, time_emb_dim=time_emb_dim, cond_dim=cond_emb_dim))
+            # Subsequent resblocks take output of previous block
+            for _ in range(num_res_blocks - 1):
+                self.res_blocks_up.append(ResBlock(out_ch, out_ch, time_emb_dim=time_emb_dim, cond_dim=cond_emb_dim))
+            ch = out_ch
 
         # output conv
         self.out_norm = nn.GroupNorm(8, ch)
@@ -181,30 +185,48 @@ class TimeCondUNet(nn.Module):
         if self.cond_proj and cond_img is not None:
             cond_vec = self.cond_proj(cond_img)  # (B, cond_emb_dim)
 
-        hs = []
+        hs = []  # skip connections
         h = self.input_conv(x_noisy)
-        # encoder pass: apply ResBlocks then downsample
+        
+        # encoder pass: apply ResBlocks then downsample, save skip after resblocks
         idx = 0
         for down in self.downs:
-            # each downsample stage may have multiple res blocks
+            # Apply all res blocks for this stage
             for _ in range(2):  # num_res_blocks default 2
                 h = self.res_blocks_down[idx](h, t_emb, cond_vec)
-                hs.append(h)
                 idx += 1
+            # Save the feature map BEFORE downsampling as skip connection
+            hs.append(h)
+            # Then downsample
             h = down(h)
+        
         # middle
         h = self.mid_block1(h, t_emb, cond_vec)
         h = self.mid_block2(h, t_emb, cond_vec)
 
-        # decoder: upsample and consume skips
+        # decoder: upsample and consume skips (pop in reverse order)
         idx_up = 0
-        for up in self.ups:
+        for stage_idx, up in enumerate(self.ups):
+            # Upsample first
             h = up(h)
-            # pop last skip (reverse order)
+            # Pop the corresponding skip connection (LIFO - last saved, first used)
             skip = hs.pop()
+            
+            # Ensure spatial dimensions match (handle odd input sizes from nearest upsampling)
+            h_h, h_w = h.shape[-2:]
+            s_h, s_w = skip.shape[-2:]
+            if h_h != s_h or h_w != s_w:
+                if h_h < s_h:
+                    # Pad with reflection if smaller
+                    h = F.pad(h, (0, s_w - h_w, 0, s_h - h_h), mode='reflect')
+                else:
+                    # Crop if larger
+                    h = h[:, :, :s_h, :s_w]
+            
+            # Concatenate BEFORE first resblock of this stage
             h = torch.cat([h, skip], dim=1)
-            # run the res blocks for this stage
-            for _ in range(2):
+            # Apply res blocks for this decoder stage
+            for block_idx in range(2):
                 h = self.res_blocks_up[idx_up](h, t_emb, cond_vec)
                 idx_up += 1
 
@@ -284,50 +306,45 @@ class Diffusion:
                 x = self.p_sample(x, t_idx, cond_img)
         return x
 
-# -------------------------
-# Dataset skeleton
-# -------------------------
 class RadioMapDataset(Dataset):
     """
-    Expect inputs:
-      - elevation maps: (H, W) floats (meters) normalized externally
-      - cond channels: concatenated channels, e.g. tx heatmap, material codes (C_cond, H, W)
-      - target radio map: (H, W) in dB normalized to [-1,1] or similar
-    This is a skeleton; adapt to your storage format (numpy files, HDF5, etc.).
+    Loads input and target tensors from separate directories.
+    
+    Expects:
+      - input_dir: contains input_tensor files (H, W, 3) with channels [elevation, distance, frequency]
+      - target_dir: contains target_tensor files (H, W, 1) with RSS in dBm
     """
-    def __init__(self, root_dir, filenames, transform=None):
+    def __init__(self, input_dir, target_dir, transform=None):
         super().__init__()
-        self.root = root_dir
-        self.files = filenames
+        self.input_dir = input_dir
+        self.target_dir = target_dir
         self.transform = transform
+        
+        # Get list of input files (assume matching files in target_dir)
+        self.input_files = sorted([f for f in os.listdir(input_dir) if f.endswith('_input.npy')])
+        self.scene_names = [f.replace('_input.npy', '') for f in self.input_files]
 
     def __len__(self):
-        return len(self.files)
+        return len(self.scene_names)
 
     def __getitem__(self, idx):
-        fn = self.files[idx]
-        # Example: each file is a dict with 'elevation', 'cond', 'rss'
-        data = np.load(os.path.join(self.root, fn), allow_pickle=True).item()
-        elev = data['elevation'].astype(np.float32)  # (H,W)
-        cond = data.get('cond', None)  # (C_cond,H,W)
-        rss = data['rss'].astype(np.float32)  # (H,W)
-        # normalize / scale as needed (user choice)
-        # Here assume rss is in dB range [-150,-50]. Map to [-1,1] for training stability
-        rss_norm = (rss + 100.) / 50.  # example mapping
-        rss_norm = np.clip(rss_norm, -1.0, 1.0)
-        rss_norm = rss_norm[None, :, :]  # add channel dim
-
-        # cond channels: always present as image-like
-        if cond is None:
-            cond = np.zeros((1, elev.shape[0], elev.shape[1]), dtype=np.float32)
-        # include elevation as first cond channel
-        cond_full = np.concatenate([elev[None, :, :].astype(np.float32), cond], axis=0)
-
+        scene_name = self.scene_names[idx]
+        
+        # Load input tensor (H, W, 3)
+        input_tensor = np.load(os.path.join(self.input_dir, f"{scene_name}_input.npy"))
+        
+        # Load target tensor (H, W, 1)
+        target_tensor = np.load(os.path.join(self.target_dir, f"{scene_name}_target.npy"))
+        
+        # Convert to torch tensors, permute to (C, H, W) format expected by models
+        input_tensor = torch.from_numpy(input_tensor).permute(2, 0, 1).float()  # (3, H, W)
+        target_tensor = torch.from_numpy(target_tensor).permute(2, 0, 1).float()  # (1, H, W)
+        
         return {
-            'rss': torch.from_numpy(rss_norm),
-            'cond': torch.from_numpy(cond_full)
+            'input': input_tensor,
+            'target': target_tensor
         }
-
+    
 # -------------------------
 # Training loop (simple)
 # -------------------------
@@ -353,8 +370,8 @@ def train(
         epoch_loss = 0.0
         pbar = tqdm(loader, desc=f"Epoch {epoch+1}/{epochs}")
         for batch in pbar:
-            rss = batch['rss'].to(device)  # (B,1,H,W)
-            cond = batch['cond'].to(device)  # (B,C,H,W)
+            rss = batch['target'].to(device)  # (B,1,H,W)
+            cond = batch['input'].to(device)  # (B,C,H,W)
             bs = rss.shape[0]
             # choose random timesteps for each sample
             t = torch.randint(0, timesteps, (bs,), device=device).long()
@@ -386,28 +403,3 @@ def sample_and_save(model: TimeCondUNet, cond_img: torch.Tensor, device='cuda', 
     samples_cpu = samples.detach().cpu().numpy()
     np.save(out_path, samples_cpu)
     return samples_cpu
-
-# -------------------------
-# Example usage (if run as script)
-# -------------------------
-if __name__ == '__main__':
-    # small smoke test with random tensors
-    device = 'cuda' if torch.cuda.is_available() else 'cpu'
-    model = TimeCondUNet(in_ch=1, cond_channels=2, base_ch=32, channel_mults=(1,2,4), num_res_blocks=2, time_emb_dim=128, cond_emb_dim=64)
-    model.to(device)
-    print("Model params:", sum(p.numel() for p in model.parameters())/1e6, "M")
-
-    # create fake dataset
-    class FakeDS(Dataset):
-        def __len__(self): return 64
-        def __getitem__(self, idx):
-            rss = np.random.randn(1, 128, 128).astype(np.float32)
-            cond = np.random.randn(2, 128, 128).astype(np.float32)
-            return {'rss': torch.from_numpy(rss), 'cond': torch.from_numpy(cond)}
-    ds = FakeDS()
-    # train for 1 epoch just to check
-    train(model, ds, device=device, epochs=1, batch_size=8, lr=2e-4, timesteps=200, save_every=1, out_dir='./tmp_ckpt')
-    # sampling example
-    cond_sample = torch.randn((4,2,128,128))
-    samples = sample_and_save(model, cond_sample, device=device, steps=20, out_path='sample.npy')
-    print("Saved samples shape:", samples.shape)
