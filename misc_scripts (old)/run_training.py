@@ -16,7 +16,7 @@ import numpy as np
 import torch
 from torch.utils.data import DataLoader
 
-from interm_demo import TimeCondUNet, RadioMapDataset, train
+from models.diffusion import TimeCondUNet, RadioMapDataset, train
 
 
 def parse_arguments():
