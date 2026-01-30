@@ -76,6 +76,14 @@ for i in range(len(list(Path(SCENE_DIR).iterdir()))):
     # Render scenes to rss arrays
     scene.render(camera=my_cam, radio_map=rm)
     rm.show(metric="rss")
+
+    # Handle -inf values before saving
+    rss_map = rm.rss
+    rss_map[rss_map == -np.inf] = 99999
+
+    # set -inf values back to minimum for difference calculation
+    rss_map[rss_map == 99999] = rss_map.min()
+
     np.save(f"automated_scenes/scene{i}/rss_values{i}.npy", rm.rss)
 
     print(f"Done rendering scene {i}")
