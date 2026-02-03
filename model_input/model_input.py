@@ -60,7 +60,7 @@ def scene_to_tensor_simple(scene_dir: str, distance_normalize=True, freq_log_sca
         raise RuntimeError(f"No rss_values*.npy found in {scene_dir}")
     rss = np.load(rss_files[0])  # H x W
 
-    #resize elevation map to shape of RSS map if needed
+    # Resize elevation map to shape of RSS map if needed
     H, W = rss.shape[1], rss.shape[2]
     elevation_rs = resize(
     elevation,
@@ -69,7 +69,14 @@ def scene_to_tensor_simple(scene_dir: str, distance_normalize=True, freq_log_sca
     preserve_range=True,
     anti_aliasing=False
     ).astype(np.float32)
-    
+
+    # Want to create another numpy array that is a boolean arrea which indicates 0 for ground and 1 for buildings
+    boolean_mask = np.where(elevation_rs > 0, 1, 0).astype(np.float32)  # H x W
+
+    # Boolean mask to indicate null values in RSS
+    rss_null_mask = np.isinf(rss)  # True where RSS is -inf
+    print("printing rss null mask shape")
+    print(rss_null_mask.shape)
 
     # Load TX metadata
     metadata_file = scene_path / "tx_metadata.json"
@@ -83,24 +90,25 @@ def scene_to_tensor_simple(scene_dir: str, distance_normalize=True, freq_log_sca
 
    # H, W = elevation_rs.shape
 
+   # 
+   
+
     # Distance map (XY plane)
     xx, yy = np.meshgrid(np.arange(W), np.arange(H))
     distance_map = np.sqrt((xx - tx_pos[0])**2 + (yy - tx_pos[1])**2)
-    if distance_normalize:
-        distance_map = distance_map / distance_map.max()  # scale 0-1
+    #if distance_normalize:
+    #   distance_map = distance_map / distance_map.max()  # scale 0-1
 
-    # Frequency channel
-    if freq_log_scale:
-        freq_val = np.log10(frequency_hz / 1e9)  # log10(GHz)
-    else:
-        freq_val = float(frequency_hz)
-    freq_map = np.full_like(elevation_rs, freq_val, dtype=np.float32)
-
+    # Convert frequency → wavelength and encode distance in wavelengths
+    c = 3e8
+    wavelength = c / frequency_hz
+    distance_map = distance_map / wavelength
+    
     # Stack input channels: elevation, distance, frequency
     input_tensor = np.stack([
         elevation_rs.astype(np.float32),
         distance_map.astype(np.float32),
-        freq_map.astype(np.float32)
+        boolean_mask.astype(np.float32),
     ], axis=-1)
 
     # Target tensor: RSS
