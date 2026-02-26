@@ -24,12 +24,13 @@ import sys
 import argparse
 from pathlib import Path
 
-# Add models to path
-sys.path.insert(0, str(Path(__file__).parent / 'models'))
+# Add parent directory and models to path
+sys.path.insert(0, str(Path(__file__).parent.parent))
+sys.path.insert(0, str(Path(__file__).parent.parent / 'models'))
 
 import torch
-from diffusion import TimeCondUNet, RadioMapDataset
-from eval.backtest_evaluation import (
+from models.diffusion import TimeCondUNet, RadioMapDataset
+from backtest.backtest_evaluation import (
     backtest_on_dataset,
     plot_evaluation_results,
     print_evaluation_report
@@ -42,18 +43,18 @@ def main():
     )
     parser.add_argument(
         '--checkpoint',
-        default='models/checkpoints/model_final.pt',
-        help='Path to model checkpoint (default: models/checkpoints/model_final.pt)'
+        default='../models/checkpoints/model_final.pt',
+        help='Path to model checkpoint relative to project root (default: models/checkpoints/model_final.pt)'
     )
     parser.add_argument(
         '--input-dir',
-        default='model_input/data/training/input',
-        help='Path to input tensors'
+        default='../model_input/data/training/input',
+        help='Path to input tensors relative to project root'
     )
     parser.add_argument(
         '--target-dir',
-        default='model_input/data/training/target',
-        help='Path to target tensors'
+        default='../model_input/data/training/target',
+        help='Path to target tensors relative to project root'
     )
     parser.add_argument(
         '--output-dir',
