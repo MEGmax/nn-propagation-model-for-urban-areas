@@ -290,14 +290,21 @@ class Diffusion:
         return model_mean + sigma * noise
 
     @torch.no_grad()
-    def sample(self, cond_img, shape=(1,1,200,200), steps=50):
+    def sample(self, cond_img, shape=None, steps=50):
         """
         Fast sampling loop (can reduce steps to 10-20 for speed; quality may drop)
         cond_img: conditioning image (B, cond_channels, H, W)
+        shape: optional output shape (B, 1, H, W). If None, infers spatial dims from cond_img
         """
         self.model.eval()
         b = cond_img.shape[0]
-        x = torch.randn((b, shape[1], shape[2], shape[3]), device=self.device)
+        
+        # Infer shape from conditioning image if not provided
+        if shape is None:
+            _, _, h, w = cond_img.shape
+            shape = (b, 1, h, w)
+        
+        x = torch.randn(shape, device=self.device)
         timesteps = np.linspace(0, self.timesteps - 1, steps, dtype=int)[::-1]
         for i, t in enumerate(timesteps):
             t_idx = int(t)

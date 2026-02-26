@@ -1,7 +1,6 @@
 
 # =========================================================================
 # Training Entry Point for Conditional Diffusion Model
-# Includes checkpoint management, logging, and backtesting integration
 # =========================================================================
 import os
 import sys
@@ -62,7 +61,7 @@ class CheckpointManager:
         metadata['last_updated'] = timestamp
         self._save_metadata(metadata)
         
-        logger.info(f"✓ Checkpoint saved: {filename} (loss: {loss:.6f})")
+        logger.info(f"Checkpoint saved: {filename} (loss: {loss:.6f})")
         return path
     
     def load_checkpoint(self, filename: str = None):
@@ -79,7 +78,7 @@ class CheckpointManager:
             raise FileNotFoundError(f"Checkpoint not found: {path}")
         
         checkpoint = torch.load(path, map_location='cpu')
-        logger.info(f"✓ Loaded checkpoint: {filename}")
+        logger.info(f"Loaded checkpoint: {filename}")
         return checkpoint
     
     def _load_metadata(self):
@@ -139,7 +138,7 @@ def main():
         dataset = RadioMapDataset(args.input_dir, args.target_dir)
         if len(dataset) == 0:
             raise ValueError("Dataset is empty. Check data directories.")
-        logger.info(f"✓ Loaded {len(dataset)} samples")
+        logger.info(f"Loaded {len(dataset)} samples")
         
         # Model configuration
         model_config = {
@@ -196,7 +195,7 @@ def main():
             out_dir=args.checkpoint_dir
         )
         
-        logger.info("✓ Training completed successfully!")
+        logger.info("Training completed successfully!")
         
         # Print summary
         print("\n" + "="*80)

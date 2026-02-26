@@ -2,8 +2,6 @@
 
 **Date**: January 29, 2025  
 **Project**: Conditional Diffusion Model for Radio Propagation Maps  
-**Assessment Basis**: AIRMap paper (Saeizadeh et al., arXiv:2511.05522)
-
 ---
 
 ## 📊 What Was Created
