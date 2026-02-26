@@ -39,7 +39,7 @@ for i in range(len(list(Path(SCENE_DIR).iterdir()))):
         num_cols=4,
         vertical_spacing=0.5,
         horizontal_spacing=0.5,
-        pattern="tr38901",  # where we declare the frequency
+        pattern="tr38901",
         polarization="V",
     )
 
@@ -73,16 +73,12 @@ for i in range(len(list(Path(SCENE_DIR).iterdir()))):
     with open(metadata_path, "w") as f:
         json.dump(scene_config, f, indent=4)
 
-    # Render scenes to rss arrays
-    scene.render(camera=my_cam, radio_map=rm)
-    rm.show(metric="rss")
-
     # Handle -inf values before saving
     # rss_map = rm.rss
-    #rss_map[rss_map == -np.inf] = 99999
+    # rss_map[rss_map == -np.inf] = 99999
 
     # set -inf values back to minimum for difference calculation
-    #rss_map[rss_map == 99999] = rss_map.min()
+    # rss_map[rss_map == 99999] = rss_map.min()
 
     np.save(f"automated_scenes/scene{i}/rss_values{i}.npy", rm.rss)
 
