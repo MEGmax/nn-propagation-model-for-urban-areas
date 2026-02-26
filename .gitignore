@@ -5,3 +5,5 @@
 /model_input/data
 /models/__pycache__
 .vscode
+.DS_Store
+models/checkpoints/
