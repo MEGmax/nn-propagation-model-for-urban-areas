@@ -35,8 +35,13 @@ from tqdm import tqdm
 import matplotlib.pyplot as plt
 
 # Import model components
-sys.path.insert(0, str(Path(__file__).parent / 'models'))
-from diffusion import TimeCondUNet, RadioMapDataset, Diffusion
+sys.path.insert(0, str(Path(__file__).parent.parent))
+sys.path.insert(0, str(Path(__file__).parent.parent / 'models'))
+from models.diffusion import TimeCondUNet, RadioMapDataset
+try:
+    from models.diffusion import Diffusion
+except ImportError:
+    Diffusion = None
 
 # Setup logging
 logging.basicConfig(
@@ -371,7 +376,6 @@ def print_evaluation_report(metrics: List[Dict], aggregate: Dict):
     """Print formatted evaluation report."""
     print("\n" + "="*80)
     print("BACKTESTING REPORT: Conditional Diffusion Model for RSS Prediction")
-    print("Based on AIRMap paper evaluation methodology")
     print("="*80)
     
     print(f"\nEvaluated: {aggregate.get('num_scenarios', 0)} scenes")
