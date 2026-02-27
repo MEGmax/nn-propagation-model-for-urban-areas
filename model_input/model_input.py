@@ -1,14 +1,15 @@
 # multi channel tensor input for nn model
 import os
+from tracemalloc import start
 from matplotlib import pyplot as plt
-
+import torch
 # we want to have a function that takes in the path to the scene directory and returns the multi channel tensor input for the nn model
 import numpy as np
 from pathlib import Path
 import json
 from skimage.transform import resize
+import sionna.rt as rt
 
-# pip install scikit-image
 
 #creates a directory called data split into training, validation and testing that stores input and target tensors used as input for the nn model
 def createDataTensorsFromScenes(scenes_root: str, output_dir_input: str, output_dir_target: str):
@@ -41,6 +42,11 @@ def scene_to_tensor_simple(scene_dir: str, distance_normalize=True, freq_log_sca
     Returns
     -------
     input_tensor : np.ndarray
+        elevation_rs.astype(np.float32),
+        distance_map.astype(np.float32),
+        boolean_mask.astype(np.float32),
+        rss_null_mask.astype(np.float32), 
+        ob
         H x W x 3 tensor:
         [elevation, distance, frequency]
     target_tensor : np.ndarray
@@ -75,7 +81,8 @@ def scene_to_tensor_simple(scene_dir: str, distance_normalize=True, freq_log_sca
 
     # Boolean mask to indicate null values in RSS
     rss_null_mask = np.isinf(rss)  # True where RSS is -inf
-    print("printing rss null mask shape")
+    print("beep")
+    rss_null_mask = np.squeeze(rss_null_mask, axis=0)  # H x W
     print(rss_null_mask.shape)
 
     # Load TX metadata
@@ -86,16 +93,21 @@ def scene_to_tensor_simple(scene_dir: str, distance_normalize=True, freq_log_sca
         tx_meta = json.load(f)
 
     tx_pos = np.array(tx_meta["tx_position"])  # [x, y, z]
+    print("tx pos", tx_pos)
+
     frequency_hz = tx_meta["frequency"]
 
-   # H, W = elevation_rs.shape
-
-   # 
-   
+    # H, W = elevation_rs.shape
 
     # Distance map (XY plane)
     xx, yy = np.meshgrid(np.arange(W), np.arange(H))
-    distance_map = np.sqrt((xx - tx_pos[0])**2 + (yy - tx_pos[1])**2)
+
+    # Shift origin to center
+    xx_centered = xx - W / 2
+    yy_centered = yy - H / 2
+
+    # Assuming tx_pos[0], tx_pos[1] are also relative to center
+    distance_map = np.sqrt((xx_centered - tx_pos[0])**2 + (yy_centered - tx_pos[1])**2)
     #if distance_normalize:
     #   distance_map = distance_map / distance_map.max()  # scale 0-1
 
@@ -103,12 +115,15 @@ def scene_to_tensor_simple(scene_dir: str, distance_normalize=True, freq_log_sca
     c = 3e8
     wavelength = c / frequency_hz
     distance_map = distance_map / wavelength
-    
-    # Stack input channels: elevation, distance, frequency
+
+    print("printing shapes", elevation_rs.shape, distance_map.shape, boolean_mask.shape, rss_null_mask.shape)
+
+     # Stack input channels: elevation, distance, frequency
     input_tensor = np.stack([
         elevation_rs.astype(np.float32),
-        distance_map.astype(np.float32),
-        boolean_mask.astype(np.float32),
+        distance_map.astype(np.float32)
+        #boolean_mask.astype(np.float32),
+        #rss_null_mask.astype(np.float32)
     ], axis=-1)
 
     # Target tensor: RSS
@@ -145,3 +160,4 @@ else:
 
 createDataTensorsFromScenes(SCENES_ROOT, OUTPUT_DIR_INPUT, OUTPUT_DIR_TARGET)
 print(f"Created data tensors in {OUTPUT_DIR_INPUT} and {OUTPUT_DIR_TARGET}")    
+
