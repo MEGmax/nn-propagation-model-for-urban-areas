@@ -20,9 +20,23 @@ from diffusion import TimeCondUNet, Diffusion
 def load_model(checkpoint_path: str, device: str = 'cpu'):
     """Load a trained model from checkpoint."""
     # Model configuration (must match training config)
+    # Check if we should use 2 or 3 channels by trying to load state dict
+    try:
+        checkpoint = torch.load(checkpoint_path, map_location=device, weights_only=True)
+        state_dict_to_check = checkpoint['model_state_dict'] if isinstance(checkpoint, dict) and 'model_state_dict' in checkpoint else checkpoint
+        
+        # Check kernel size of first layer 'cond_proj.0.weight'
+        # Shape is usually [out_channels, in_channels, kH, kW]
+        # We need in_channels (dim 1)
+        in_channels = state_dict_to_check['cond_proj.0.weight'].shape[1]
+        print(f"Detected model expecting {in_channels} input channels.")
+    except Exception as e:
+        print(f"Warning: Could not detect channel count from checkpoint ({e}), defaulting to 2.")
+        in_channels = 2
+
     model_config = {
         'in_ch': 1,
-        'cond_channels': 3,  # elevation, distance, frequency
+        'cond_channels': in_channels,  # elevation, distance, (frequency optional)
         'base_ch': 32,
         'channel_mults': (1, 2, 4),
         'num_res_blocks': 2,
@@ -32,10 +46,7 @@ def load_model(checkpoint_path: str, device: str = 'cpu'):
     
     model = TimeCondUNet(**model_config)
     
-    # Load checkpoint
-    checkpoint = torch.load(checkpoint_path, map_location=device, weights_only=True)
-    
-    # Handle both state_dict formats
+    # Checkpoint already loaded above
     if isinstance(checkpoint, dict) and 'model_state_dict' in checkpoint:
         model.load_state_dict(checkpoint['model_state_dict'])
     else:
@@ -209,9 +220,21 @@ def main():
     cond_input = np.load(args.input)
     print(f"  Input shape: {cond_input.shape}")
     
+    # Check what the model expects (it was loaded successfully above)
+    expected_channels = model.model_config['cond_channels'] if hasattr(model, 'model_config') else cond_input.shape[2]
+    # Or just check the first layer
+    try:
+        expected_channels = model.cond_proj[0].in_channels
+    except:
+        expected_channels = 3 # fallback
+        
+    print(f"Model expects {expected_channels} channels. Input has {cond_input.shape[2]} channels.")
+    
     # Validate input shape
-    if cond_input.ndim != 3 or cond_input.shape[2] != 3:
-        print(f"Error: Expected input shape (H, W, 3), got {cond_input.shape}")
+    if cond_input.ndim != 3 or cond_input.shape[2] != expected_channels:
+        print(f"Error: Expected input shape (H, W, {expected_channels}), got {cond_input.shape}")
+        print("Input tensor:")
+        # print(cond_input)
         sys.exit(1)
     
     # Run inference

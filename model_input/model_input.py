@@ -116,14 +116,17 @@ def scene_to_tensor_simple(scene_dir: str, distance_normalize=True, freq_log_sca
     wavelength = c / frequency_hz
     distance_map = distance_map / wavelength
 
-    print("printing shapes", elevation_rs.shape, distance_map.shape, boolean_mask.shape, rss_null_mask.shape)
+    # Create frequency map (constant channel)
+    # freq_map = np.full((H, W), np.log10(frequency_hz), dtype=np.float32)
+    # if not freq_log_scale:
+    #      freq_map = np.full((H, W), frequency_hz / 1e9, dtype=np.float32) # normalize by GHz if not log
+
+    print("printing shapes", elevation_rs.shape, distance_map.shape)
 
      # Stack input channels: elevation, distance, frequency
     input_tensor = np.stack([
         elevation_rs.astype(np.float32),
         distance_map.astype(np.float32)
-        #boolean_mask.astype(np.float32),
-        #rss_null_mask.astype(np.float32)
     ], axis=-1)
 
     # Target tensor: RSS
