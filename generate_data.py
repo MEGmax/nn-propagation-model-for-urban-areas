@@ -109,6 +109,21 @@ def main():
         print(f"Error running Sionna script: {e}")
         sys.exit(1)
 
+    # 5. Run Model Input Processing
+    print("\n--- Step 4: Formatting Data for Training (Model Input) ---")
+    model_input_script = Path("model_input/model_input.py").resolve()
+    model_input_dir = model_input_script.parent
+
+    # We run this from the model_input directory to ensure relative paths in that script work as intended
+    cmd_model_input = [sys.executable, "model_input.py"]
+    
+    try:
+        subprocess.run(cmd_model_input, cwd=str(model_input_dir), check=True)
+        print("Model input processing complete.")
+    except subprocess.CalledProcessError as e:
+        print(f"Error running model input script: {e}")
+        sys.exit(1)
+
     print("\n=== Data Generation Pipeline Complete! ===")
 
 if __name__ == "__main__":
