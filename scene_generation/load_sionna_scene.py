@@ -80,6 +80,6 @@ for i in range(len(list(Path(SCENE_DIR).iterdir()))):
     # set -inf values back to minimum for difference calculation
     # rss_map[rss_map == 99999] = rss_map.min()
 
-    np.save(f"automated_scenes/scene{i}/rss_values{i}.npy", rm.rss)
+    np.save(SCENE_DIR / f"scene{i}" / f"rss_values{i}.npy", rm.rss)
 
     print(f"Done rendering scene {i}")
