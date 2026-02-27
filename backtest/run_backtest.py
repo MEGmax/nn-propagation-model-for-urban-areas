@@ -114,17 +114,28 @@ def main():
     print(f"Loading checkpoint: {args.checkpoint}")
     checkpoint = torch.load(args.checkpoint, map_location=device)
     
+    # Detect input channels from checkpoint
+    try:
+        state_dict = checkpoint['model_state_dict'] if isinstance(checkpoint, dict) and 'model_state_dict' in checkpoint else checkpoint
+        # Shape is [out_channels, in_channels, kH, kW]
+        in_channels = state_dict['cond_proj.0.weight'].shape[1]
+        print(f"Detected model expecting {in_channels} input channels.")
+    except Exception as e:
+        print(f"Warning: Could not detect channel count from checkpoint ({e}), defaulting to 2.")
+        in_channels = 2
+
     # Create model
     print("Initializing model...")
-    model = TimeCondUNet(
-        in_ch=1,
-        cond_channels=3,
-        base_ch=32,
-        channel_mults=(1, 2, 4),
-        num_res_blocks=2,
-        time_emb_dim=128,
-        cond_emb_dim=64
-    )
+    model_config = {
+        'in_ch': 1,
+        'cond_channels': in_channels,
+        'base_ch': 32,
+        'channel_mults': (1, 2, 4),
+        'num_res_blocks': 2,
+        'time_emb_dim': 128,
+        'cond_emb_dim': 64
+    }
+    model = TimeCondUNet(**model_config)
     
     # Load state dict
     if isinstance(checkpoint, dict) and 'model_state_dict' in checkpoint:

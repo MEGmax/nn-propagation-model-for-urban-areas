@@ -143,7 +143,7 @@ def main():
         # Model configuration
         model_config = {
             'in_ch': 1,
-            'cond_channels': 3,  # elevation, distance, frequency
+            'cond_channels': 2,  # elevation, distance (with frequency encoded)
             'base_ch': 32,
             'channel_mults': (1, 2, 4),
             'num_res_blocks': 2,
