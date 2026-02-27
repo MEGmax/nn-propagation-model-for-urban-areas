@@ -7,7 +7,7 @@ Tools for rendering accurate models of radio wave coverage maps, such as Ray-tra
 This project aims to develop a machine learning-assisted system for optimizing the placement of outdoor wireless transmitters. Data will be generated using ray tracing simulations in urban environments to create received signal strength (RSS) and path loss maps for candidate transmitter positions. A neural network will be trained to accurately predict radio propagation with input features relating to the urban environment. An optimization algorithm will then evaluate predicted coverage to select transmitter locations to maximize performance while minimizing deployment costs. 
 
 
-### Setup Instructions
+## Setup Instructions
 Run ```source ./venv/bin/activate``` to activate the virtual environment.
 
 Then install the required packages using:
@@ -31,8 +31,39 @@ Use `pyenv` to manage multiple python versions
 - `docs/`: Documentation and quick reference guides
 
 
-## To Generate Data
-- Run `python scene_generation/load_sionna_scene.py` to generate .npy files containing radio maps for all scenes in `automated_scenes/`
+## Data Generation
+To generate a complete dataset (scenes, elevation maps, and radio maps), you can run the automated pipeline script:
+
+```bash
+python generate_data.py --num-scenes 5
+```
+
+This script sequentially executes the following steps:
+1. **Scene Generation**: Runs `scene_generation/studio_setup.py` in Blender to create 3D city models and export them as XML.
+2. **Elevation Mapping**: Runs `scene_generation/2d_elevation_map.py` to compute 2D normalized elevation maps from the building meshes.
+3. **Radio Map Tracing**: Runs `scene_generation/load_sionna_scene.py` to simulate radio propagation using Sionna ray tracing and output the ground truth RSS maps.
+
+#### Manual Execution
+Alternatively, you can run each step individually:
+
+1. **Generate Scenes (Blender):**
+   ```bash
+   /Applications/Blender.app/Contents/MacOS/Blender --background --python scene_generation/studio_setup.py -- --num-scenes 5
+   ```
+   *Note: Adjust the Blender path for your system.*
+
+2. **Generate Elevation Maps:**
+   ```bash
+   python scene_generation/2d_elevation_map.py
+   ```
+
+3. **Generate Radio Maps (Sionna):**
+   ```bash
+   python scene_generation/load_sionna_scene.py
+   ```
+
+### Output Structure
+All generated data is improved in `scene_generation/automated_scenes/` with the following structure per scene:
 
 ##### Data Model
 - elevation.npy : elevation map of the scene
@@ -49,7 +80,7 @@ Use `pyenv` to manage multiple python versions
  "tx_orientation": [np.array([azimuth, elevation])]
 }
 
-# Step by Step Guide to Creating, Evaluating, and Inferencing a Model Instance:
+# Creating, Evaluating, and Inferencing a Model Instance:
 
 ## 1. Prepare your data
 Make sure you have generated the .npy files for your scenes using `load_sionna_scene.py` and that they are located in `automated_scenes/sceneX/` where X is the scene number (0-N). Each scene folder should contain:
