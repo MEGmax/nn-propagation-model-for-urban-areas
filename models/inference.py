@@ -22,7 +22,7 @@ def load_model(checkpoint_path: str, device: str = 'cpu'):
     # Model configuration (must match training config)
     model_config = {
         'in_ch': 1,
-        'cond_channels': 3,  # elevation, distance, frequency
+        'cond_channels': 2,  # elevation, distance
         'base_ch': 32,
         'channel_mults': (1, 2, 4),
         'num_res_blocks': 2,
@@ -54,7 +54,7 @@ def run_inference(model, cond_input: np.ndarray, device: str = 'cpu',
     
     Args:
         model: Trained TimeCondUNet model
-        cond_input: Conditioning input array (H, W, 3) with channels [elevation, distance, frequency]
+        cond_input: Conditioning input array (H, W, 2) with channels [elevation, distance]
         device: Device to run inference on
         sampling_steps: Number of reverse diffusion steps
         timesteps: Total diffusion timesteps (should match training)
@@ -63,7 +63,7 @@ def run_inference(model, cond_input: np.ndarray, device: str = 'cpu',
         RSS prediction as numpy array (H, W, 1) in dBm
     """
     # Convert input to torch tensor with batch dimension
-    # Input expected: (H, W, 3) -> need (B, 3, H, W)
+    # Input expected: (H, W, 2) -> need (B, 2, H, W)
     cond_tensor = torch.from_numpy(cond_input).permute(2, 0, 1).unsqueeze(0).float()
     cond_tensor = cond_tensor.to(device)
     
@@ -164,7 +164,7 @@ def main():
                         default='./checkpoints/model_final.pt',
                         help='Path to model checkpoint')
     parser.add_argument('--input', type=str, required=True,
-                        help='Path to input conditioning tensor (.npy file with shape H,W,3)')
+                        help='Path to input conditioning tensor (.npy file with shape H,W,2)')
     parser.add_argument('--output-dir', type=str, default='../rss_visualizations',
                         help='Directory to save outputs')
     parser.add_argument('--output-name', type=str, default='prediction',
@@ -210,8 +210,8 @@ def main():
     print(f"  Input shape: {cond_input.shape}")
     
     # Validate input shape
-    if cond_input.ndim != 3 or cond_input.shape[2] != 3:
-        print(f"Error: Expected input shape (H, W, 3), got {cond_input.shape}")
+    if cond_input.ndim != 3 or cond_input.shape[2] != 2:
+        print(f"Error: Expected input shape (H, W, 2), got {cond_input.shape}")
         sys.exit(1)
     
     # Run inference

@@ -100,6 +100,8 @@ def main():
                        help='Path to input tensors directory')
     parser.add_argument('--target-dir', default='../model_input/data/training/target',
                        help='Path to target tensors directory')
+    parser.add_argument('--mask-dir', default='../model_input/data/training/masks',
+                       help='Path to mask tensors directory')
     parser.add_argument('--epochs', type=int, default=50,
                        help='Number of training epochs')
     parser.add_argument('--batch-size', type=int, default=4,
@@ -125,6 +127,8 @@ def main():
             raise FileNotFoundError(f"Target directory not found: {args.target_dir}")
         if not os.path.isdir(args.input_dir):
             raise FileNotFoundError(f"Input directory not found: {args.input_dir}")
+        if not os.path.isdir(args.mask_dir):
+            raise FileNotFoundError(f"Mask directory not found: {args.mask_dir}")
         
         # Device
         device = 'cuda' if torch.cuda.is_available() else 'cpu'
@@ -135,7 +139,7 @@ def main():
         
         # Load dataset
         logger.info("Loading dataset...")
-        dataset = RadioMapDataset(args.input_dir, args.target_dir)
+        dataset = RadioMapDataset(args.input_dir, args.target_dir, mask_dir=args.mask_dir)
         if len(dataset) == 0:
             raise ValueError("Dataset is empty. Check data directories.")
         logger.info(f"Loaded {len(dataset)} samples")
@@ -143,7 +147,7 @@ def main():
         # Model configuration
         model_config = {
             'in_ch': 1,
-            'cond_channels': 3,  # elevation, distance, frequency
+            'cond_channels': 2,  # elevation, distance
             'base_ch': 32,
             'channel_mults': (1, 2, 4),
             'num_res_blocks': 2,

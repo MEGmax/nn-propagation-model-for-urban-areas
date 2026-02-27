@@ -264,14 +264,26 @@ class Diffusion:
         sqrt_omacp = self.sqrt_one_minus_alphas_cumprod[t].view(-1, 1, 1, 1)
         return sqrt_acp * x_start + sqrt_omacp * noise
 
-    def p_losses(self, x_start, cond_img, t):
+    def p_losses(self, x_start, cond_img, t, valid_mask: Optional[torch.Tensor] = None):
         """
         Standard epsilon-prediction loss (MSE between true noise and model-predicted noise)
         """
         noise = torch.randn_like(x_start)
         x_noisy = self.q_sample(x_start, t, noise=noise)
         pred_noise = self.model(x_noisy, t, cond_img)
-        return F.mse_loss(pred_noise, noise)
+
+        if valid_mask is None:
+            return F.mse_loss(pred_noise, noise)
+
+        # Ensure mask is broadcastable to (B, C, H, W)
+        if valid_mask.dim() == 3:
+            valid_mask = valid_mask.unsqueeze(1)
+        valid_mask = valid_mask.to(device=pred_noise.device, dtype=pred_noise.dtype)
+
+        loss_map = (pred_noise - noise) ** 2
+        masked_loss = loss_map * valid_mask
+        denom = valid_mask.sum().clamp_min(1e-8)
+        return masked_loss.sum() / denom
 
     @torch.no_grad()
     def p_sample(self, x, t_index, cond_img):
@@ -318,13 +330,16 @@ class RadioMapDataset(Dataset):
     Loads input and target tensors from separate directories.
     
     Expects:
-      - input_dir: contains input_tensor files (H, W, 3) with channels [elevation, distance, frequency]
+      - input_dir: contains input_tensor files (H, W, 2) with channels [elevation, distance]
       - target_dir: contains target_tensor files (H, W, 1) with RSS in dBm
+      - mask_dir (optional): contains per-scene mask folder
+        {scene_name}/boolean_mask.npy and {scene_name}/rss_null_mask.npy (H, W, 1)
     """
-    def __init__(self, input_dir, target_dir, transform=None):
+    def __init__(self, input_dir, target_dir, mask_dir=None, transform=None):
         super().__init__()
         self.input_dir = input_dir
         self.target_dir = target_dir
+        self.mask_dir = mask_dir
         self.transform = transform
         
         # Get list of input files (assume matching files in target_dir)
@@ -337,19 +352,32 @@ class RadioMapDataset(Dataset):
     def __getitem__(self, idx):
         scene_name = self.scene_names[idx]
         
-        # Load input tensor (H, W, 3)
+        # Load input tensor (H, W, 2)
         input_tensor = np.load(os.path.join(self.input_dir, f"{scene_name}_input.npy"))
         
         # Load target tensor (H, W, 1)
         target_tensor = np.load(os.path.join(self.target_dir, f"{scene_name}_target.npy"))
         
         # Convert to torch tensors, permute to (C, H, W) format expected by models
-        input_tensor = torch.from_numpy(input_tensor).permute(2, 0, 1).float()  # (3, H, W)
+        input_tensor = torch.from_numpy(input_tensor).permute(2, 0, 1).float()  # (2, H, W)
         target_tensor = torch.from_numpy(target_tensor).permute(2, 0, 1).float()  # (1, H, W)
+
+        if self.mask_dir is not None:
+            scene_mask_dir = os.path.join(self.mask_dir, scene_name)
+            boolean_mask = np.load(os.path.join(scene_mask_dir, "boolean_mask.npy"))
+            rss_null_mask = np.load(os.path.join(scene_mask_dir, "rss_null_mask.npy"))
+            boolean_mask = torch.from_numpy(boolean_mask).permute(2, 0, 1).float()  # (1, H, W)
+            rss_null_mask = torch.from_numpy(rss_null_mask).permute(2, 0, 1).float()  # (1, H, W)
+        else:
+            # Fallback for legacy datasets: no masking
+            boolean_mask = torch.zeros_like(target_tensor)
+            rss_null_mask = torch.zeros_like(target_tensor)
         
         return {
             'input': input_tensor,
-            'target': target_tensor
+            'target': target_tensor,
+            'boolean_mask': boolean_mask,
+            'rss_null_mask': rss_null_mask
         }
     
 # -------------------------
@@ -379,10 +407,13 @@ def train(
         for batch in pbar:
             rss = batch['target'].to(device)  # (B,1,H,W)
             cond = batch['input'].to(device)  # (B,C,H,W)
+            boolean_mask = batch['boolean_mask'].to(device)
+            rss_null_mask = batch['rss_null_mask'].to(device)
+            valid_mask = ((boolean_mask == 0) & (rss_null_mask == 0)).float()
             bs = rss.shape[0]
             # choose random timesteps for each sample
             t = torch.randint(0, timesteps, (bs,), device=device).long()
-            loss = diffusion.p_losses(rss, cond, t)
+            loss = diffusion.p_losses(rss, cond, t, valid_mask=valid_mask)
             optimizer.zero_grad()
             loss.backward()
             optimizer.step()

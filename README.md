@@ -14,6 +14,13 @@ Then install the required packages using:
 ```
 pip install -r requirements.txt
 ```
+
+#### macOS Sionna/DrJit LLVM Runtime Note
+On this machine, Sionna scene execution requires:
+```
+export DRJIT_LIBLLVM_PATH=/opt/anaconda3/lib/libLLVM-14.dylib
+```
+You can export it once in your shell profile (`~/.zshrc`) or rely on the helper script below.
 #### load_sionna_scene.py Dependencies
 - Python 3.12 (due to Sionna dependency)
 Use `pyenv` to manage multiple python versions
@@ -114,6 +121,20 @@ python visualize_rss_maps.py --num-scenes 5 --diffusion-steps 50
 
 #run the inference script directly
 python inference.py --checkpoint ../models/checkpoints/model_final.pt --scene scene0
+```
+
+### 5. One-Command Real 10-Scene Masked Validation
+To regenerate input/target/mask tensors and run the 10-scene masked finite-loss sanity check:
+
+```bash
+./scripts/run_real_10_scene_masked_check.sh
+```
+
+This script automatically sets `DRJIT_LIBLLVM_PATH` to `/opt/anaconda3/lib/libLLVM-14.dylib` if it is not already set.
+It expects an environment where `torch` is installed. If needed, point it to a specific interpreter:
+
+```bash
+PYTHON_BIN=/path/to/python ./scripts/run_real_10_scene_masked_check.sh
 ```
 
 ### Contributors
