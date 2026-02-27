@@ -30,8 +30,8 @@ for i in range(len(list(Path(SCENE_DIR).iterdir()))):
     scene = load_scene(SCENE_DIR / f"scene{i}" / f"scene{i}.xml")
     # scene = load_scene(TRUTH_DIR / "ground_truth.xml")
 
-    #set frequency in between 900 MHz and 5.3 GHz
-    scene.frequency = int(random.uniform(900e6, 5.3e9))
+    #set frequency in between 1 GHz and 5.3 GHz
+    scene.frequency = int(random.uniform(1e9, 5.3e9))
     print(f"Set frequency to {scene.frequency} GHz")
 
     scene.tx_array = PlanarArray(
