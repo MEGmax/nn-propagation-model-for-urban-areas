@@ -42,6 +42,7 @@ This script sequentially executes the following steps:
 1. **Scene Generation**: Runs `scene_generation/studio_setup.py` in Blender to create 3D city models and export them as XML.
 2. **Elevation Mapping**: Runs `scene_generation/2d_elevation_map.py` to compute 2D normalized elevation maps from the building meshes.
 3. **Radio Map Tracing**: Runs `scene_generation/load_sionna_scene.py` to simulate radio propagation using Sionna ray tracing and output the ground truth RSS maps.
+4. **Data Formatting**: Runs `model_input/model_input.py` to convert raw scene data into training-ready tensor files.
 
 #### Manual Execution
 Alternatively, you can run each step individually:
@@ -60,6 +61,11 @@ Alternatively, you can run each step individually:
 3. **Generate Radio Maps (Sionna):**
    ```bash
    python scene_generation/load_sionna_scene.py
+   ```
+
+4. **Format Data for Training:**
+   ```bash
+   python model_input.py
    ```
 
 ### Output Structure
