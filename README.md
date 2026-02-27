@@ -37,7 +37,6 @@ Use `pyenv` to manage multiple python versions
 ##### Data Model
 - elevation.npy : elevation map of the scene
 - rss_values.npy : ray-traced received signal strength map
-- elevation.npy : elevation map of the scene
 - tx_metadata.json : transmitter position and orientation
 ##### Supporting Files
 - meshes folder: contains building meshes in PLY format
@@ -50,18 +49,10 @@ Use `pyenv` to manage multiple python versions
  "tx_orientation": [np.array([azimuth, elevation])]
 }
 
-## load_sionna_scene.py Dependencies
-- Python 3.12 (due to Sionna dependency)
-Use `pyenv` to manage multiple python versions
-- llvm compiler (run `brew install llvm` on MacOS) and set environment:
-  - `export LDFLAGS="-L/usr/local/opt/llvm/lib"`
-  - `export CPPFLAGS="-I/usr/local/opt/llvm/include"`
-  - `export PATH="/usr/local/opt/llvm/bin:$PATH"`
-
 # Step by Step Guide to Creating, Evaluating, and Inferencing a Model Instance:
 
 ## 1. Prepare your data
-Make sure you have generated the .npy files for your scenes using `load_sionna_scene.py` and that they are located in `automated_scenes/sceneX/` where X is the scene number (0-19). Each scene folder should contain:
+Make sure you have generated the .npy files for your scenes using `load_sionna_scene.py` and that they are located in `automated_scenes/sceneX/` where X is the scene number (0-N). Each scene folder should contain:
 - `elevation.npy`
 - `rss_values.npy`
 - `tx_metadata.json`
