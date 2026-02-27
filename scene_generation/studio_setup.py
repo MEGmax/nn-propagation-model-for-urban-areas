@@ -11,7 +11,9 @@ import numpy as np
 from pathlib import Path
 
 # Command to run in terminal (depends on your Blender installation path):
-# /Applications/Blender.app/Contents/MacOS/Blender --background --python ./studio_setup.py --
+# /Applications/Blender.app/Contents/MacOS/Blender --background --python scene_generation/studio_setup.py --
+# Parameters example:
+# --num-scenes 5 --buildings-in-center False
 
 # Use seeds for debugging
 # np.random.seed(42)

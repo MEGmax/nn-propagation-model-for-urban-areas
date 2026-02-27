@@ -3,13 +3,16 @@ import glob
 import trimesh
 import numpy as np
 import matplotlib.pyplot as plt
+
 from matplotlib.path import Path
+from pathlib import Path as PathlibPath
 
 # =========================
 # GLOBAL PARAMETERS
 # =========================
 
-SCENES_ROOT = "automated_scenes"
+BASE_DIR = PathlibPath(__file__).resolve().parent
+SCENES_ROOT = BASE_DIR / "automated_scenes"
 METERS_PER_PIXEL = 0.5
 H_MAX = 20   # meters (you may want to auto-compute this later)
 
