@@ -5,6 +5,7 @@
 /model_input/data
 /models/__pycache__
 /models/checkpoints
+/rss_visualizations/
 .vscode
 .DS_Store
 **/__pycache__
