@@ -1,4 +1,5 @@
 .venv
+venv
 /scene_generation/automated_scenes
 /scene_generation/ground_truth
 .github/copilot-instructions.md
@@ -9,4 +10,5 @@
 .vscode
 .DS_Store
 **/__pycache__
-venv
+.ipynb_checkpoints/
+*.ipynb_checkpoints
