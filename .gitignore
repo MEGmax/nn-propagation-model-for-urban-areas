@@ -4,8 +4,8 @@
 .github/copilot-instructions.md
 /model_input/data
 /models/__pycache__
+/models/checkpoints
 .vscode
 .DS_Store
-models/checkpoints/
 **/__pycache__
 venv
