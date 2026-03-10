@@ -316,16 +316,20 @@ class Diffusion:
 class RadioMapDataset(Dataset):
     """
     Loads input and target tensors from separate directories.
-    
+
     Expects:
-      - input_dir: contains input_tensor files (H, W, 3) with channels [elevation, distance, frequency]
-      - target_dir: contains target_tensor files (H, W, 1) with RSS in dBm
+      - input_dir: contains input_tensor files (H, W, C)
+      - target_dir: contains target files (H, W, 1)
+        - RSS default: *_target.npy
+        - Path-loss option: *_pathloss_target.npy
     """
-    def __init__(self, input_dir, target_dir, transform=None):
+    def __init__(self, input_dir, target_dir, transform=None, target_kind: str = 'rss'):
         super().__init__()
         self.input_dir = input_dir
         self.target_dir = target_dir
         self.transform = transform
+        self.target_kind = target_kind
+        self.target_suffix = '_target.npy' if target_kind == 'rss' else '_pathloss_target.npy'
         
         # Get list of input files (assume matching files in target_dir)
         self.input_files = sorted([f for f in os.listdir(input_dir) if f.endswith('_input.npy')])
@@ -341,7 +345,11 @@ class RadioMapDataset(Dataset):
         input_tensor = np.load(os.path.join(self.input_dir, f"{scene_name}_input.npy"))
         
         # Load target tensor (H, W, 1)
-        target_tensor = np.load(os.path.join(self.target_dir, f"{scene_name}_target.npy"))
+        target_path = os.path.join(self.target_dir, f"{scene_name}{self.target_suffix}")
+        if not os.path.exists(target_path) and self.target_kind == 'rss':
+            # Compatibility fallback for legacy naming.
+            target_path = os.path.join(self.target_dir, f"{scene_name}_target.npy")
+        target_tensor = np.load(target_path)
         
         # Convert to torch tensors, permute to (C, H, W) format expected by models
         input_tensor = torch.from_numpy(input_tensor).permute(2, 0, 1).float()  # (3, H, W)

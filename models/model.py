@@ -100,6 +100,8 @@ def main():
                        help='Path to input tensors directory')
     parser.add_argument('--target-dir', default='../model_input/data/training/target',
                        help='Path to target tensors directory')
+    parser.add_argument('--target-kind', choices=['rss', 'pathloss'], default='rss',
+                       help='Semantic of target tensors to load')
     parser.add_argument('--epochs', type=int, default=50,
                        help='Number of training epochs')
     parser.add_argument('--batch-size', type=int, default=4,
@@ -110,7 +112,7 @@ def main():
                        help='Number of diffusion timesteps')
     parser.add_argument('--save-every', type=int, default=5,
                        help='Save checkpoint every N epochs')
-    parser.add_argument('--checkpoint-dir', default='./checkpoints',
+    parser.add_argument('--checkpoint-dir', default=None,
                        help='Directory to save checkpoints')
     parser.add_argument('--resume', action='store_true',
                        help='Resume training from latest checkpoint')
@@ -120,6 +122,9 @@ def main():
     args = parser.parse_args()
     
     try:
+        if args.checkpoint_dir is None:
+            args.checkpoint_dir = './checkpoints' if args.target_kind == 'rss' else './checkpoints_pathloss'
+
         # Validate directories
         if not os.path.isdir(args.target_dir):
             raise FileNotFoundError(f"Target directory not found: {args.target_dir}")
@@ -135,7 +140,7 @@ def main():
         
         # Load dataset
         logger.info("Loading dataset...")
-        dataset = RadioMapDataset(args.input_dir, args.target_dir)
+        dataset = RadioMapDataset(args.input_dir, args.target_dir, target_kind=args.target_kind)
         if len(dataset) == 0:
             raise ValueError("Dataset is empty. Check data directories.")
         logger.info(f"Loaded {len(dataset)} samples")
@@ -180,6 +185,8 @@ def main():
         logger.info(f"  Batch size: {args.batch_size}")
         logger.info(f"  Learning rate: {args.lr}")
         logger.info(f"  Timesteps: {args.timesteps}")
+        logger.info(f"  Target kind: {args.target_kind}")
+        logger.info(f"  Checkpoint dir: {args.checkpoint_dir}")
         
         # Train
         logger.info("Starting training...")

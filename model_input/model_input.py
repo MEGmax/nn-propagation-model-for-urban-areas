@@ -1,163 +1,186 @@
-# multi channel tensor input for nn model
-import os
-from tracemalloc import start
-from matplotlib import pyplot as plt
-import torch
-# we want to have a function that takes in the path to the scene directory and returns the multi channel tensor input for the nn model
-import numpy as np
-from pathlib import Path
+# Build multi-channel input tensors and training targets from generated scenes.
+import argparse
 import json
-from skimage.transform import resize
-import sionna.rt as rt
+import os
+from pathlib import Path
+
+import numpy as np
 
 
-#creates a directory called data split into training, validation and testing that stores input and target tensors used as input for the nn model
-def createDataTensorsFromScenes(scenes_root: str, output_dir_input: str, output_dir_target: str):
-    scene_dirs = [d for d in Path(scenes_root).iterdir() if d.is_dir()]
-    os.makedirs(output_dir_input, exist_ok=True)
-    os.makedirs(output_dir_target, exist_ok=True)
-    for scene_dir in scene_dirs:
-        input_tensor, target_tensor = scene_to_tensor_simple(scene_dir)
-        scene_name = scene_dir.name
-        np.save(os.path.join(output_dir_input, f"{scene_name}_input.npy"), input_tensor)
-        np.save(os.path.join(output_dir_target, f"{scene_name}_target.npy"), target_tensor)
-    print(f"Saved tensors for {len(scene_dirs)} scenes to {output_dir_input} and {output_dir_target}")
+TARGET_RSS = "rss"
+TARGET_PATHLOSS = "pathloss"
 
-def scene_to_tensor_simple(scene_dir: str, distance_normalize=True, freq_log_scale=True):
-    """
-    Converts a scene folder into an ML-ready input tensor and RSS target tensor.
 
-    Parameters
-    ----------
-    scene_dir : str or Path
-        Path to a scene folder containing:
-        - elevation.npy
-        - rss_values*.npy
-        - tx_metadata.json
-    distance_normalize : bool
-        Whether to normalize the distance map to 0-1 (optional)
-    freq_log_scale : bool
-        Whether to use log10(frequency in GHz) for the frequency channel
+def _load_first(scene_path: Path, pattern: str, error_label: str) -> np.ndarray:
+    files = list(scene_path.glob(pattern))
+    if not files:
+        raise RuntimeError(f"No {error_label} found in {scene_path}")
+    return np.load(files[0])
 
-    Returns
-    -------
-    input_tensor : np.ndarray
-        elevation_rs.astype(np.float32),
-        distance_map.astype(np.float32),
-        boolean_mask.astype(np.float32),
-        rss_null_mask.astype(np.float32), 
-        ob
-        H x W x 3 tensor:
-        [elevation, distance, frequency]
-    target_tensor : np.ndarray
-        H x W RSS map
-    """
+
+def _build_input_tensor(scene_path: Path, h: int, w: int, tx_meta: dict) -> np.ndarray:
+    elevation = _load_first(scene_path, "elevation*.npy", "elevation*.npy")
+    eh, ew = elevation.shape
+    yi = np.clip((np.linspace(0, eh - 1, h)).round().astype(int), 0, eh - 1)
+    xi = np.clip((np.linspace(0, ew - 1, w)).round().astype(int), 0, ew - 1)
+    elevation_rs = elevation[np.ix_(yi, xi)].astype(np.float32)
+
+    tx_pos = np.array(tx_meta.get("tx_position", [0.0, 0.0, 0.0]), dtype=np.float32)
+    tx_x, tx_y = float(tx_pos[0]), float(tx_pos[1])
+
+    xx, yy = np.meshgrid(np.arange(w), np.arange(h))
+    xx_centered = xx - w / 2.0
+    yy_centered = yy - h / 2.0
+    distance_map = np.sqrt((xx_centered - tx_x) ** 2 + (yy_centered - tx_y) ** 2).astype(np.float32)
+
+    frequency_hz = float(tx_meta.get("frequency", 2.4e9))
+    wavelength = 3e8 / max(frequency_hz, 1.0)
+    distance_in_wavelengths = distance_map / wavelength
+
+    return np.stack(
+        [
+            elevation_rs.astype(np.float32),
+            distance_in_wavelengths.astype(np.float32),
+        ],
+        axis=-1,
+    )
+
+
+def _build_rss_target(scene_path: Path) -> np.ndarray:
+    rss_linear_w = _load_first(scene_path, "rss_values*.npy", "rss_values*.npy")
+    if rss_linear_w.ndim == 2:
+        rss_linear_w = rss_linear_w[None, ...]
+
+    rss_safe = np.clip(rss_linear_w, 1e-30, None)
+    rss_dbm = 10.0 * np.log10(rss_safe) + 30.0
+    return np.transpose(rss_dbm.astype(np.float32), (1, 2, 0))
+
+
+def _build_pathloss_target(scene_path: Path, tx_meta: dict) -> np.ndarray:
+    pathloss_files = list(scene_path.glob("pathloss_values*.npy"))
+    if pathloss_files:
+        pathloss_db = np.load(pathloss_files[0])
+    else:
+        # Compatibility fallback for old scenes that only contain RSS.
+        # RSS[dBm] = P_tx[dBm] - PathLoss[dB] => PathLoss[dB] = P_tx[dBm] - RSS[dBm].
+        rss_linear_w = _load_first(scene_path, "rss_values*.npy", "rss_values*.npy")
+        if rss_linear_w.ndim == 2:
+            rss_linear_w = rss_linear_w[None, ...]
+        rss_dbm = 10.0 * np.log10(np.clip(rss_linear_w, 1e-30, None)) + 30.0
+        tx_power_dbm = float(tx_meta.get("tx_power_dbm", 44.0))
+        pathloss_db = tx_power_dbm - rss_dbm
+
+    if pathloss_db.ndim == 2:
+        pathloss_db = pathloss_db[None, ...]
+
+    return np.transpose(pathloss_db.astype(np.float32), (1, 2, 0))
+
+
+def scene_to_tensors(scene_dir: Path, target_kind: str) -> tuple[np.ndarray, np.ndarray]:
     scene_path = Path(scene_dir)
-
-    # Load elevation
-    elevation_files = list(scene_path.glob("elevation*.npy"))
-    if not elevation_files:
-        raise RuntimeError(f"No elevation.npy found in {scene_dir}")
-    elevation = np.load(elevation_files[0])  # H x W 
-
-
-    rss_files = list(scene_path.glob("rss_values*.npy"))
-    if not rss_files:
-        raise RuntimeError(f"No rss_values*.npy found in {scene_dir}")
-    rss = np.load(rss_files[0])  # H x W
-
-    # Resize elevation map to shape of RSS map if needed
-    H, W = rss.shape[1], rss.shape[2]
-    elevation_rs = resize(
-    elevation,
-    (H, W),
-    order=0,                # nearest neighbor
-    preserve_range=True,
-    anti_aliasing=False
-    ).astype(np.float32)
-
-    # Want to create another numpy array that is a boolean arrea which indicates 0 for ground and 1 for buildings
-    boolean_mask = np.where(elevation_rs > 0, 1, 0).astype(np.float32)  # H x W
-
-    # Boolean mask to indicate null values in RSS
-    rss_null_mask = np.isinf(rss)  # True where RSS is -inf
-    print("beep")
-    rss_null_mask = np.squeeze(rss_null_mask, axis=0)  # H x W
-    print(rss_null_mask.shape)
-
-    # Load TX metadata
     metadata_file = scene_path / "tx_metadata.json"
     if not metadata_file.exists():
-        raise RuntimeError(f"No tx_metadata.json found in {scene_dir}")
+        raise RuntimeError(f"No tx_metadata.json found in {scene_path}")
+
     with open(metadata_file, "r") as f:
         tx_meta = json.load(f)
 
-    tx_pos = np.array(tx_meta["tx_position"])  # [x, y, z]
-    print("tx pos", tx_pos)
+    if target_kind == TARGET_RSS:
+        target_tensor = _build_rss_target(scene_path)
+    elif target_kind == TARGET_PATHLOSS:
+        target_tensor = _build_pathloss_target(scene_path, tx_meta)
+    else:
+        raise ValueError(f"Unknown target kind: {target_kind}")
 
-    frequency_hz = tx_meta["frequency"]
-
-    # H, W = elevation_rs.shape
-
-    # Distance map (XY plane)
-    xx, yy = np.meshgrid(np.arange(W), np.arange(H))
-
-    # Shift origin to center
-    xx_centered = xx - W / 2
-    yy_centered = yy - H / 2
-
-    # Assuming tx_pos[0], tx_pos[1] are also relative to center
-    distance_map = np.sqrt((xx_centered - tx_pos[0])**2 + (yy_centered - tx_pos[1])**2)
-    #if distance_normalize:
-    #   distance_map = distance_map / distance_map.max()  # scale 0-1
-
-    # Convert frequency → wavelength and encode distance in wavelengths
-    c = 3e8
-    wavelength = c / frequency_hz
-    distance_map = distance_map / wavelength
-
-    print("printing shapes", elevation_rs.shape, distance_map.shape, boolean_mask.shape, rss_null_mask.shape)
-
-     # Stack input channels: elevation, distance, frequency
-    input_tensor = np.stack([
-        elevation_rs.astype(np.float32),
-        distance_map.astype(np.float32)
-        #boolean_mask.astype(np.float32),
-        #rss_null_mask.astype(np.float32)
-    ], axis=-1)
-
-    # Target tensor: RSS
-
-    # Convert rss from dB to dBm
-    rss_dbm = 10 * np.log10(rss) + 30
-    target_tensor = rss_dbm.astype(np.float32)
-
-    # Permute target tensor to H x W X C
-    target_tensor = np.transpose(target_tensor, (1, 2, 0))  # H x W x C
-
+    h, w = target_tensor.shape[0], target_tensor.shape[1]
+    input_tensor = _build_input_tensor(scene_path, h, w, tx_meta)
     return input_tensor, target_tensor
 
 
-# Create automation here to convert all scenes in a root directory
-scene_folder = Path("../scene_generation/automated_scenes").resolve()
-print(scene_folder.exists())  # Should print True
-SCENES_ROOT = str(scene_folder)
+def create_data_tensors_from_scenes(
+    scenes_root: str,
+    output_dir_input: str,
+    output_dir_target: str,
+    target_kind: str = TARGET_RSS,
+) -> int:
+    scene_dirs = sorted([d for d in Path(scenes_root).iterdir() if d.is_dir()])
+    os.makedirs(output_dir_input, exist_ok=True)
+    os.makedirs(output_dir_target, exist_ok=True)
 
-# Choose dataset split: "training", "testing", or "validation"
-DATASET_SPLIT = "training"
+    target_suffix = "_target.npy" if target_kind == TARGET_RSS else "_pathloss_target.npy"
 
-if DATASET_SPLIT == "training":
-    OUTPUT_DIR_INPUT = "data/training/input"
-    OUTPUT_DIR_TARGET = "data/training/target"
-elif DATASET_SPLIT == "testing":
-    OUTPUT_DIR_INPUT = "data/testing/input"
-    OUTPUT_DIR_TARGET = "data/testing/target"
-elif DATASET_SPLIT == "validation":
-    OUTPUT_DIR_INPUT = "data/validation/input"
-    OUTPUT_DIR_TARGET = "data/validation/target"
-else:
-    raise ValueError(f"Invalid DATASET_SPLIT: {DATASET_SPLIT}. Must be 'training', 'testing', or 'validation'")
+    generated = 0
+    for scene_dir in scene_dirs:
+        input_tensor, target_tensor = scene_to_tensors(scene_dir, target_kind=target_kind)
+        scene_name = scene_dir.name
 
-createDataTensorsFromScenes(SCENES_ROOT, OUTPUT_DIR_INPUT, OUTPUT_DIR_TARGET)
-print(f"Created data tensors in {OUTPUT_DIR_INPUT} and {OUTPUT_DIR_TARGET}")    
+        np.save(os.path.join(output_dir_input, f"{scene_name}_input.npy"), input_tensor)
+        np.save(os.path.join(output_dir_target, f"{scene_name}{target_suffix}"), target_tensor)
+        generated += 1
 
+    print(
+        f"Saved {target_kind} tensors for {generated} scenes to "
+        f"{output_dir_input} and {output_dir_target}"
+    )
+    return generated
+
+
+def _default_output_dirs(dataset_split: str, target_kind: str) -> tuple[str, str]:
+    if dataset_split not in {"training", "testing", "validation"}:
+        raise ValueError("DATASET_SPLIT must be one of: training, testing, validation")
+
+    output_dir_input = f"data/{dataset_split}/input"
+    if target_kind == TARGET_RSS:
+        output_dir_target = f"data/{dataset_split}/target"
+    else:
+        output_dir_target = f"data/{dataset_split}/target_pathloss"
+
+    return output_dir_input, output_dir_target
+
+
+def main():
+    default_scenes_root = Path(__file__).resolve().parent.parent / "scene_generation" / "automated_scenes"
+
+    parser = argparse.ArgumentParser(description="Build input/target tensors for model training")
+    parser.add_argument(
+        "--scenes-root",
+        type=str,
+        default=str(default_scenes_root),
+        help="Directory containing scene folders",
+    )
+    parser.add_argument(
+        "--dataset-split",
+        type=str,
+        default="training",
+        choices=["training", "testing", "validation"],
+        help="Dataset split name used for default output folders",
+    )
+    parser.add_argument(
+        "--target-kind",
+        type=str,
+        default=TARGET_RSS,
+        choices=[TARGET_RSS, TARGET_PATHLOSS],
+        help="Target semantic to generate",
+    )
+    parser.add_argument("--output-dir-input", type=str, default=None)
+    parser.add_argument("--output-dir-target", type=str, default=None)
+
+    args = parser.parse_args()
+
+    default_input, default_target = _default_output_dirs(args.dataset_split, args.target_kind)
+    output_dir_input = args.output_dir_input or default_input
+    output_dir_target = args.output_dir_target or default_target
+
+    count = create_data_tensors_from_scenes(
+        scenes_root=args.scenes_root,
+        output_dir_input=output_dir_input,
+        output_dir_target=output_dir_target,
+        target_kind=args.target_kind,
+    )
+
+    print(f"Created {args.target_kind} data tensors in {output_dir_input} and {output_dir_target}")
+    print(f"Scene count: {count}")
+
+
+if __name__ == "__main__":
+    main()

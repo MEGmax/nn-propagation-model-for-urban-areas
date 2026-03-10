@@ -9,6 +9,13 @@ from pathlib import Path
 
 import random
 
+
+def _to_numpy(array_like):
+    """Convert tensors/array-like objects from Sionna/Mitsuba to NumPy arrays."""
+    if hasattr(array_like, "numpy"):
+        return array_like.numpy()
+    return np.array(array_like)
+
 # pip install sionna
 # pip install tensorflow
 # pip install matplotlib
@@ -67,6 +74,8 @@ for i in range(len(list(Path(SCENE_DIR).iterdir()))):
         "frequency": np.array(scene.frequency).item(),
         "tx_position": [np.array(tx.position.x).item(), np.array(tx.position.y).item(), np.array(tx.position.z).item()],
         "tx_orientation": [np.array(tx.orientation.x).item(), np.array(tx.orientation.y).item(), np.array(tx.orientation.z).item()],
+        "tx_power_dbm": float(tx.power_dbm),
+        "tx_power_w": float(tx.power),
     }
     metadata_path = SCENE_DIR / f"scene{i}" / "tx_metadata.json"
 
@@ -80,6 +89,15 @@ for i in range(len(list(Path(SCENE_DIR).iterdir()))):
     # set -inf values back to minimum for difference calculation
     # rss_map[rss_map == 99999] = rss_map.min()
 
-    np.save(SCENE_DIR / f"scene{i}" / f"rss_values{i}.npy", rm.rss)
+    rss_linear_w = _to_numpy(rm.rss)
+    path_gain_linear = _to_numpy(rm.path_gain)
+
+    # Path loss in dB is independent of transmit power and is the preferred ML target:
+    # path_loss_db = -10 * log10(path_gain_linear).
+    path_gain_safe = np.clip(path_gain_linear, 1e-30, None)
+    path_loss_db = -10.0 * np.log10(path_gain_safe)
+
+    np.save(SCENE_DIR / f"scene{i}" / f"rss_values{i}.npy", rss_linear_w)
+    np.save(SCENE_DIR / f"scene{i}" / f"pathloss_values{i}.npy", path_loss_db.astype(np.float32))
 
     print(f"Done rendering scene {i}")
