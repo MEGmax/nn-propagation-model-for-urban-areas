@@ -82,14 +82,6 @@ for i in range(len(list(Path(SCENE_DIR).iterdir()))):
     with open(metadata_path, "w") as f:
         json.dump(scene_config, f, indent=4)
 
-    # Handle -inf values before saving
-    # rss_map = rm.rss
-    # rss_map[rss_map == -np.inf] = 99999
-
-    # set -inf values back to minimum for difference calculation
-    # rss_map[rss_map == 99999] = rss_map.min()
-
-    rss_linear_w = _to_numpy(rm.rss)
     path_gain_linear = _to_numpy(rm.path_gain)
 
     # Path loss in dB is independent of transmit power and is the preferred ML target:
@@ -97,7 +89,6 @@ for i in range(len(list(Path(SCENE_DIR).iterdir()))):
     path_gain_safe = np.clip(path_gain_linear, 1e-30, None)
     path_loss_db = -10.0 * np.log10(path_gain_safe)
 
-    np.save(SCENE_DIR / f"scene{i}" / f"rss_values{i}.npy", rss_linear_w)
     np.save(SCENE_DIR / f"scene{i}" / f"pathloss_values{i}.npy", path_loss_db.astype(np.float32))
 
     print(f"Done rendering scene {i}")

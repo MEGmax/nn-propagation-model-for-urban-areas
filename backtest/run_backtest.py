@@ -43,8 +43,8 @@ def main():
     )
     parser.add_argument(
         '--checkpoint',
-        default='../models/checkpoints/model_final.pt',
-        help='Path to model checkpoint relative to project root (default: models/checkpoints/model_final.pt)'
+        default='../models/checkpoints_pathloss/model_final.pt',
+        help='Path to model checkpoint relative to project root (default: models/checkpoints_pathloss/model_final.pt)'
     )
     parser.add_argument(
         '--input-dir',
@@ -53,7 +53,7 @@ def main():
     )
     parser.add_argument(
         '--target-dir',
-        default='../model_input/data/training/target',
+        default='../model_input/data/training/target_pathloss',
         help='Path to target tensors relative to project root'
     )
     parser.add_argument(

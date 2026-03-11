@@ -291,11 +291,11 @@ def generate_visualizations(
 
 def main():
     parser = argparse.ArgumentParser(
-        description='Generate PNG visualizations of RSS map predictions'
+        description='Generate PNG visualizations of pathloss map predictions'
     )
     parser.add_argument(
         '--checkpoint',
-        default='models/checkpoints/model_final.pt',
+        default='models/checkpoints_pathloss/model_final.pt',
         help='Path to model checkpoint'
     )
     parser.add_argument(
@@ -305,7 +305,7 @@ def main():
     )
     parser.add_argument(
         '--target-dir',
-        default='model_input/data/training/target',
+        default='model_input/data/training/target_pathloss',
         help='Path to target tensors'
     )
     parser.add_argument(

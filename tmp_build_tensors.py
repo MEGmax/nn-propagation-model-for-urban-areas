@@ -11,17 +11,17 @@ def build_tensors(scenes_root: Path, out_input: Path, out_target: Path) -> int:
     count = 0
     for scene_dir in sorted([d for d in scenes_root.iterdir() if d.is_dir()]):
         elev_files = list(scene_dir.glob('elevation*.npy'))
-        rss_files = list(scene_dir.glob('rss_values*.npy'))
+        pathloss_files = list(scene_dir.glob('pathloss_values*.npy'))
         meta_file = scene_dir / 'tx_metadata.json'
-        if not elev_files or not rss_files or not meta_file.exists():
+        if not elev_files or not pathloss_files or not meta_file.exists():
             continue
 
         elevation = np.load(elev_files[0]).astype(np.float32)
-        rss = np.load(rss_files[0]).astype(np.float32)
-        if rss.ndim == 2:
-            rss = rss[None, ...]
+        pathloss = np.load(pathloss_files[0]).astype(np.float32)
+        if pathloss.ndim == 2:
+            pathloss = pathloss[None, ...]
 
-        h, w = int(rss.shape[1]), int(rss.shape[2])
+        h, w = int(pathloss.shape[1]), int(pathloss.shape[2])
 
         eh, ew = elevation.shape
         yi = np.clip((np.linspace(0, eh - 1, h)).round().astype(int), 0, eh - 1)
@@ -51,13 +51,11 @@ def build_tensors(scenes_root: Path, out_input: Path, out_target: Path) -> int:
 
         input_tensor = np.stack([elevation_rs, distance_map, freq_ghz], axis=-1).astype(np.float32)
 
-        rss_safe = np.where(rss > 0, rss, 1e-12)
-        rss_dbm = (10.0 * np.log10(rss_safe) + 30.0).astype(np.float32)
-        target_tensor = np.transpose(rss_dbm, (1, 2, 0)).astype(np.float32)
+        target_tensor = np.transpose(pathloss, (1, 2, 0)).astype(np.float32)
 
         scene_name = scene_dir.name
         np.save(out_input / f'{scene_name}_input.npy', input_tensor)
-        np.save(out_target / f'{scene_name}_target.npy', target_tensor)
+        np.save(out_target / f'{scene_name}_pathloss_target.npy', target_tensor)
         count += 1
 
     return count
@@ -82,8 +80,8 @@ def main():
     parser.add_argument(
         '--output-target',
         type=Path,
-        default=project_root / 'model_input' / 'data' / 'training' / 'target',
-        help='Output directory for *_target.npy files.'
+        default=project_root / 'model_input' / 'data' / 'training' / 'target_pathloss',
+        help='Output directory for *_pathloss_target.npy files.'
     )
     args = parser.parse_args()
 

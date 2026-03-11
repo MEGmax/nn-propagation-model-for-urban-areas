@@ -112,7 +112,7 @@ class TimeCondUNet(nn.Module):
     def __init__(self, in_ch=1, cond_channels=0, base_ch=64, channel_mults=(1,2,4,8), 
                  num_res_blocks=2, time_emb_dim=256, cond_emb_dim=128):
         """
-        in_ch: channels of noisy target (e.g., 1 for RSS map)
+        in_ch: channels of noisy target (e.g., 1 for a pathloss map)
         cond_channels: number of channels in conditioning image (elevation + tx + extras)
         """
         super().__init__()
@@ -175,7 +175,7 @@ class TimeCondUNet(nn.Module):
 
     def forward(self, x_noisy, t, cond_img=None):
         """
-        x_noisy: (B, C, H, W) noisy target (RSS)
+        x_noisy: (B, C, H, W) noisy target (pathloss)
         t: (B,) timesteps in [0, T)
         cond_img: (B, cond_channels, H, W)
         """
@@ -319,17 +319,14 @@ class RadioMapDataset(Dataset):
 
     Expects:
       - input_dir: contains input_tensor files (H, W, C)
-      - target_dir: contains target files (H, W, 1)
-        - RSS default: *_target.npy
-        - Path-loss option: *_pathloss_target.npy
+      - target_dir: contains pathloss target files (H, W, 1) named *_pathloss_target.npy
     """
-    def __init__(self, input_dir, target_dir, transform=None, target_kind: str = 'rss'):
+    def __init__(self, input_dir, target_dir, transform=None):
         super().__init__()
         self.input_dir = input_dir
         self.target_dir = target_dir
         self.transform = transform
-        self.target_kind = target_kind
-        self.target_suffix = '_target.npy' if target_kind == 'rss' else '_pathloss_target.npy'
+        self.target_suffix = '_pathloss_target.npy'
         
         # Get list of input files (assume matching files in target_dir)
         self.input_files = sorted([f for f in os.listdir(input_dir) if f.endswith('_input.npy')])
@@ -346,9 +343,6 @@ class RadioMapDataset(Dataset):
         
         # Load target tensor (H, W, 1)
         target_path = os.path.join(self.target_dir, f"{scene_name}{self.target_suffix}")
-        if not os.path.exists(target_path) and self.target_kind == 'rss':
-            # Compatibility fallback for legacy naming.
-            target_path = os.path.join(self.target_dir, f"{scene_name}_target.npy")
         target_tensor = np.load(target_path)
         
         # Convert to torch tensors, permute to (C, H, W) format expected by models
@@ -385,12 +379,12 @@ def train(
         epoch_loss = 0.0
         pbar = tqdm(loader, desc=f"Epoch {epoch+1}/{epochs}")
         for batch in pbar:
-            rss = batch['target'].to(device)  # (B,1,H,W)
+            pathloss = batch['target'].to(device)  # (B,1,H,W)
             cond = batch['input'].to(device)  # (B,C,H,W)
-            bs = rss.shape[0]
+            bs = pathloss.shape[0]
             # choose random timesteps for each sample
             t = torch.randint(0, timesteps, (bs,), device=device).long()
-            loss = diffusion.p_losses(rss, cond, t)
+            loss = diffusion.p_losses(pathloss, cond, t)
             optimizer.zero_grad()
             loss.backward()
             optimizer.step()

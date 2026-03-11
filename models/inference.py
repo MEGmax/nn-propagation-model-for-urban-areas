@@ -50,7 +50,7 @@ def load_model(checkpoint_path: str, device: str = 'cpu'):
 def run_inference(model, cond_input: np.ndarray, device: str = 'cpu', 
                   sampling_steps: int = 50, timesteps: int = 1000):
     """
-    Run diffusion model inference to generate RSS prediction.
+    Run diffusion model inference to generate pathloss prediction.
     
     Args:
         model: Trained TimeCondUNet model
@@ -60,7 +60,7 @@ def run_inference(model, cond_input: np.ndarray, device: str = 'cpu',
         timesteps: Total diffusion timesteps (should match training)
     
     Returns:
-        RSS prediction as numpy array (H, W, 1) in dBm
+        Pathloss prediction as numpy array (H, W, 1) in dB
     """
     # Convert input to torch tensor with batch dimension
     # Input expected: (H, W, 3) -> need (B, 3, H, W)
@@ -76,66 +76,66 @@ def run_inference(model, cond_input: np.ndarray, device: str = 'cpu',
         samples = diffusion.sample(cond_tensor, steps=sampling_steps)
     
     # Convert back to numpy: (B, 1, H, W) -> (H, W, 1)
-    rss_prediction = samples.squeeze(0).permute(1, 2, 0).cpu().numpy()
+    pathloss_prediction = samples.squeeze(0).permute(1, 2, 0).cpu().numpy()
     
-    return rss_prediction
+    return pathloss_prediction
 
 
-def save_rss_numpy(rss_prediction: np.ndarray, output_path: str):
+def save_pathloss_numpy(pathloss_prediction: np.ndarray, output_path: str):
     """
-    Save RSS prediction as numpy file in the specified format.
+    Save pathloss prediction as numpy file in the specified format.
     
     Output format:
     - Shape: (H, W, 1) spatial map of signal strength
-    - Values: In dBm (decibels referenced to 1 milliwatt)
+    - Values: In dB
     - Resolution: Matches input elevation map resolution
     """
     # Ensure shape is (H, W, 1)
-    if rss_prediction.ndim == 2:
-        rss_prediction = rss_prediction[:, :, np.newaxis]
+    if pathloss_prediction.ndim == 2:
+        pathloss_prediction = pathloss_prediction[:, :, np.newaxis]
     
-    np.save(output_path, rss_prediction.astype(np.float32))
-    print(f"✓ Saved RSS values to: {output_path}")
-    print(f"  Shape: {rss_prediction.shape}")
-    print(f"  Value range: {rss_prediction.min():.2f} to {rss_prediction.max():.2f} dBm")
+    np.save(output_path, pathloss_prediction.astype(np.float32))
+    print(f"✓ Saved pathloss values to: {output_path}")
+    print(f"  Shape: {pathloss_prediction.shape}")
+    print(f"  Value range: {pathloss_prediction.min():.2f} to {pathloss_prediction.max():.2f} dB")
 
 
-def save_rss_png(rss_prediction: np.ndarray, output_path: str, 
+def save_pathloss_png(pathloss_prediction: np.ndarray, output_path: str, 
                  vmin: float = None, vmax: float = None,
-                 cmap: str = 'jet', title: str = 'Predicted RSS Heatmap'):
+                 cmap: str = 'jet', title: str = 'Predicted Pathloss Heatmap'):
     """
-    Save RSS prediction as PNG visualization.
+    Save pathloss prediction as PNG visualization.
     
     Args:
-        rss_prediction: RSS values (H, W, 1) or (H, W) in dBm
+        pathloss_prediction: Pathloss values (H, W, 1) or (H, W) in dB
         output_path: Path to save PNG
-        vmin: Minimum value for colormap (weak signal). Auto if None.
-        vmax: Maximum value for colormap (strong signal). Auto if None.
+        vmin: Minimum value for colormap. Auto if None.
+        vmax: Maximum value for colormap. Auto if None.
         cmap: Colormap to use
         title: Title for the plot
     """
     # Squeeze to 2D for visualization
-    if rss_prediction.ndim == 3:
-        rss_2d = rss_prediction.squeeze(-1)
+    if pathloss_prediction.ndim == 3:
+        pathloss_2d = pathloss_prediction.squeeze(-1)
     else:
-        rss_2d = rss_prediction
+        pathloss_2d = pathloss_prediction
     
     # Auto-scale if not provided
     if vmin is None:
-        vmin = rss_2d.min()
+        vmin = pathloss_2d.min()
     if vmax is None:
-        vmax = rss_2d.max()
+        vmax = pathloss_2d.max()
     
     # Create figure
     fig, ax = plt.subplots(figsize=(10, 8))
     
     # Plot heatmap with custom normalization
-    im = ax.imshow(rss_2d, cmap=cmap, norm=Normalize(vmin=vmin, vmax=vmax),
+    im = ax.imshow(pathloss_2d, cmap=cmap, norm=Normalize(vmin=vmin, vmax=vmax),
                    origin='upper', aspect='equal')
     
     # Add colorbar
     cbar = plt.colorbar(im, ax=ax, fraction=0.046, pad=0.04)
-    cbar.set_label('RSS (dBm)', fontsize=12)
+    cbar.set_label('Pathloss (dB)', fontsize=12)
     
     # Labels and title
     ax.set_title(title, fontsize=14, fontweight='bold')
@@ -143,9 +143,9 @@ def save_rss_png(rss_prediction: np.ndarray, output_path: str,
     ax.set_ylabel('Y (grid cells)', fontsize=11)
     
     # Add statistics annotation
-    stats_text = (f"Min: {rss_2d.min():.1f} dBm\n"
-                  f"Max: {rss_2d.max():.1f} dBm\n"
-                  f"Mean: {rss_2d.mean():.1f} dBm")
+    stats_text = (f"Min: {pathloss_2d.min():.1f} dB\n"
+                  f"Max: {pathloss_2d.max():.1f} dB\n"
+                  f"Mean: {pathloss_2d.mean():.1f} dB")
     ax.text(0.02, 0.98, stats_text, transform=ax.transAxes, fontsize=9,
             verticalalignment='top', bbox=dict(boxstyle='round', facecolor='white', alpha=0.8))
     
@@ -153,19 +153,19 @@ def save_rss_png(rss_prediction: np.ndarray, output_path: str,
     plt.savefig(output_path, dpi=150, bbox_inches='tight')
     plt.close()
     
-    print(f"✓ Saved RSS visualization to: {output_path}")
+    print(f"✓ Saved pathloss visualization to: {output_path}")
 
 
 def main():
     parser = argparse.ArgumentParser(
-        description='Run inference with trained diffusion model for RSS prediction'
+        description='Run inference with trained diffusion model for pathloss prediction'
     )
     parser.add_argument('--checkpoint', type=str, 
-                        default='./checkpoints/model_final.pt',
+                        default='./checkpoints_pathloss/model_final.pt',
                         help='Path to model checkpoint')
     parser.add_argument('--input', type=str, required=True,
                         help='Path to input conditioning tensor (.npy file with shape H,W,3)')
-    parser.add_argument('--output-dir', type=str, default='../rss_visualizations',
+    parser.add_argument('--output-dir', type=str, default='../pathloss_visualizations',
                         help='Directory to save outputs')
     parser.add_argument('--output-name', type=str, default='prediction',
                         help='Base name for output files (without extension)')
@@ -216,7 +216,7 @@ def main():
     
     # Run inference
     print(f"Running inference with {args.sampling_steps} sampling steps...")
-    rss_prediction = run_inference(model, cond_input, device=device, 
+    pathloss_prediction = run_inference(model, cond_input, device=device, 
                                     sampling_steps=args.sampling_steps)
     print("✓ Inference complete")
     
@@ -224,17 +224,17 @@ def main():
     npy_path = os.path.join(args.output_dir, f"{args.output_name}.npy")
     png_path = os.path.join(args.output_dir, f"{args.output_name}.png")
     
-    save_rss_numpy(rss_prediction, npy_path)
-    save_rss_png(rss_prediction, png_path, vmin=args.vmin, vmax=args.vmax)
+    save_pathloss_numpy(pathloss_prediction, npy_path)
+    save_pathloss_png(pathloss_prediction, png_path, vmin=args.vmin, vmax=args.vmax)
     
     print("\n" + "="*60)
     print("INFERENCE COMPLETE")
     print("="*60)
-    print(f"RSS Numpy file: {npy_path}")
-    print(f"  - Shape: (H, W, 1) = {rss_prediction.shape}")
-    print(f"  - Values: dBm (decibels referenced to 1 milliwatt)")
-    print(f"  - Range: {rss_prediction.min():.2f} to {rss_prediction.max():.2f} dBm")
-    print(f"RSS Visualization: {png_path}")
+    print(f"Pathloss Numpy file: {npy_path}")
+    print(f"  - Shape: (H, W, 1) = {pathloss_prediction.shape}")
+    print("  - Values: dB")
+    print(f"  - Range: {pathloss_prediction.min():.2f} to {pathloss_prediction.max():.2f} dB")
+    print(f"Pathloss Visualization: {png_path}")
     print("="*60)
 
 

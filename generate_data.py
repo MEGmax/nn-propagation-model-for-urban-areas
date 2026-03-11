@@ -42,13 +42,6 @@ def main():
     parser.add_argument("--blender-path", type=str, help="Path to Blender executable")
     parser.add_argument("--num-scenes", type=int, default=5, help="Number of scenes to generate")
     parser.add_argument("--skip-rendering", action="store_true", help="Skip the Blender rendering step")
-    parser.add_argument(
-        "--target-kind",
-        type=str,
-        default="rss",
-        choices=["rss", "pathloss"],
-        help="Training target semantic to prepare in model_input step",
-    )
     
     args = parser.parse_args()
     
@@ -104,7 +97,7 @@ def main():
         sys.exit(1)
 
     # 4. Run Sionna Ray Tracing
-    print("\n--- Step 3: Generating Radio Maps (Sionna: RSS + Path Loss) ---")
+    print("\n--- Step 3: Generating Pathloss Maps (Sionna) ---")
     sionna_script = Path("scene_generation/load_sionna_scene.py").resolve()
     
     cmd_sionna = [sys.executable, str(sionna_script)]
@@ -125,13 +118,11 @@ def main():
     cmd_model_input = [
         sys.executable,
         "model_input.py",
-        "--target-kind",
-        args.target_kind,
     ]
     
     try:
         subprocess.run(cmd_model_input, cwd=str(model_input_dir), check=True)
-        print(f"Model input processing complete for target kind: {args.target_kind}")
+        print("Model input processing complete for pathloss targets")
     except subprocess.CalledProcessError as e:
         print(f"Error running model input script: {e}")
         sys.exit(1)

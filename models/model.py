@@ -94,14 +94,12 @@ class CheckpointManager:
 
 def main():
     parser = argparse.ArgumentParser(
-        description='Train conditional diffusion model for RSS prediction'
+        description='Train conditional diffusion model for pathloss prediction'
     )
     parser.add_argument('--input-dir', default='../model_input/data/training/input',
                        help='Path to input tensors directory')
-    parser.add_argument('--target-dir', default='../model_input/data/training/target',
+    parser.add_argument('--target-dir', default='../model_input/data/training/target_pathloss',
                        help='Path to target tensors directory')
-    parser.add_argument('--target-kind', choices=['rss', 'pathloss'], default='rss',
-                       help='Semantic of target tensors to load')
     parser.add_argument('--epochs', type=int, default=50,
                        help='Number of training epochs')
     parser.add_argument('--batch-size', type=int, default=4,
@@ -123,7 +121,7 @@ def main():
     
     try:
         if args.checkpoint_dir is None:
-            args.checkpoint_dir = './checkpoints' if args.target_kind == 'rss' else './checkpoints_pathloss'
+            args.checkpoint_dir = './checkpoints_pathloss'
 
         # Validate directories
         if not os.path.isdir(args.target_dir):
@@ -140,7 +138,7 @@ def main():
         
         # Load dataset
         logger.info("Loading dataset...")
-        dataset = RadioMapDataset(args.input_dir, args.target_dir, target_kind=args.target_kind)
+        dataset = RadioMapDataset(args.input_dir, args.target_dir)
         if len(dataset) == 0:
             raise ValueError("Dataset is empty. Check data directories.")
         logger.info(f"Loaded {len(dataset)} samples")
@@ -185,7 +183,7 @@ def main():
         logger.info(f"  Batch size: {args.batch_size}")
         logger.info(f"  Learning rate: {args.lr}")
         logger.info(f"  Timesteps: {args.timesteps}")
-        logger.info(f"  Target kind: {args.target_kind}")
+        logger.info("  Target kind: pathloss")
         logger.info(f"  Checkpoint dir: {args.checkpoint_dir}")
         
         # Train
