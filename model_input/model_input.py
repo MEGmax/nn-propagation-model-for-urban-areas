@@ -13,7 +13,7 @@ import sionna.rt as rt
 from math import tanh
 
 #normalization constant for elevation, use config file after
-H_MAX = 20.0
+H_MAX = 8.0
 Frequency_max = 5.3e9
 
 def data_repo_setup(PARENT_DIR, OUTPUT_DIR_INPUT, OUTPUT_DIR_TARGET):
@@ -87,9 +87,9 @@ def scene_to_tensor_simple(scene_dir: str, freq_log_scale=True):
     ).astype(np.float32)
 
     # Normalize elevation to 0-1
-    elevation_norm = np.tanh(elevation_rs / H_MAX)  # simple normalization, can be tuned
+    elevation_norm = np.tanh((elevation_rs / H_MAX)* 2 - 1)  # simple normalization, can be tuned
     # Print range of normalized elevation for debugging
-    print(f"Elevation range after normalization: min={elevation_norm.min()}, max={elevation_norm.max()}")
+    #print(f"Elevation range after normalization: min={elevation_norm.min()}, max={elevation_norm.max()}")
 
     # Load TX metadata
     metadata_file = scene_path / "tx_metadata.json"
@@ -116,16 +116,15 @@ def scene_to_tensor_simple(scene_dir: str, freq_log_scale=True):
     c = 3e8
     wavelength = c / frequency_hz
     distance_wavelengths = distance_map / wavelength
-    distance_norm = np.tanh(distance_wavelengths / 353.0)  # simple normalization, can be tuned
+    distance_norm = distance_wavelengths / 353.0  # simple normalization, can be tuned
+    distance_norm = np.tanh(distance_norm * 2 - 1)
 
-    print(f"Distance range after normalization: min={distance_norm.min()}, max={distance_norm.max()}")
+    #print(f"Distance range after normalization: min={distance_norm.min()}, max={distance_norm.max()}")
 
      # Stack input channels: elevation, distance, frequency
     input_tensor = np.stack([
         elevation_norm.astype(np.float32),
         distance_norm.astype(np.float32)
-        #boolean_mask.astype(np.float32),
-        #rss_null_mask.astype(np.float32)
     ], axis=-1)
 
     # Target tensor: RSS
