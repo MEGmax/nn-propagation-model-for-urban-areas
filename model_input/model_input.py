@@ -1,5 +1,6 @@
 # multi channel tensor input for nn model
 import os
+import sys
 from tracemalloc import start
 from matplotlib import pyplot as plt
 import torch
@@ -11,16 +12,24 @@ from skimage.transform import resize
 import sionna.rt as rt
 
 
+def data_repo_setup(PARENT_DIR, OUTPUT_DIR_INPUT, OUTPUT_DIR_TARGET):
+    if str(PARENT_DIR / "scene_generation") not in sys.path:
+        sys.path.append(str(PARENT_DIR / "scene_generation"))
+    from studio_setup import repository_setup
+
+    repository_setup(OUTPUT_DIR_INPUT)
+    repository_setup(OUTPUT_DIR_TARGET)
+
 #creates a directory called data split into training, validation and testing that stores input and target tensors used as input for the nn model
-def createDataTensorsFromScenes(scenes_root: str, output_dir_input: str, output_dir_target: str):
-    scene_dirs = [d for d in Path(scenes_root).iterdir() if d.is_dir()]
-    os.makedirs(output_dir_input, exist_ok=True)
-    os.makedirs(output_dir_target, exist_ok=True)
+def createDataTensorsFromScenes(scenes_root: Path, output_dir_input: Path, output_dir_target: Path):
+    scene_dirs = [d for d in scenes_root.iterdir() if d.is_dir()]
+    # os.makedirs(output_dir_input, exist_ok=True)
+    # os.makedirs(output_dir_target, exist_ok=True)
     for scene_dir in scene_dirs:
         input_tensor, target_tensor = scene_to_tensor_simple(scene_dir)
         scene_name = scene_dir.name
-        np.save(os.path.join(output_dir_input, f"{scene_name}_input.npy"), input_tensor)
-        np.save(os.path.join(output_dir_target, f"{scene_name}_target.npy"), target_tensor)
+        np.save(output_dir_input / f"{scene_name}_input.npy", input_tensor)
+        np.save(output_dir_target / f"{scene_name}_target.npy", target_tensor)
     print(f"Saved tensors for {len(scene_dirs)} scenes to {output_dir_input} and {output_dir_target}")
 
 def scene_to_tensor_simple(scene_dir: str, distance_normalize=True, freq_log_scale=True):
@@ -32,7 +41,7 @@ def scene_to_tensor_simple(scene_dir: str, distance_normalize=True, freq_log_sca
     scene_dir : str or Path
         Path to a scene folder containing:
         - elevation.npy
-        - rss_values*.npy
+        - pathloss_values*.npy
         - tx_metadata.json
     distance_normalize : bool
         Whether to normalize the distance map to 0-1 (optional)
@@ -139,25 +148,25 @@ def scene_to_tensor_simple(scene_dir: str, distance_normalize=True, freq_log_sca
 
 
 # Create automation here to convert all scenes in a root directory
-scene_folder = Path("../scene_generation/automated_scenes").resolve()
-print(scene_folder.exists())  # Should print True
-SCENES_ROOT = str(scene_folder)
+PARENT_DIR = Path(__file__).resolve().parent.parent
+SCENES_ROOT = Path(PARENT_DIR / "scene_generation/automated_scenes").resolve()
+print(SCENES_ROOT.exists())  # Should print True
 
 # Choose dataset split: "training", "testing", or "validation"
 DATASET_SPLIT = "training"
 
 if DATASET_SPLIT == "training":
-    OUTPUT_DIR_INPUT = "data/training/input"
-    OUTPUT_DIR_TARGET = "data/training/target"
+    OUTPUT_DIR_INPUT = PARENT_DIR / "model_input/data/training/input"
+    OUTPUT_DIR_TARGET = PARENT_DIR / "model_input/data/training/target"
 elif DATASET_SPLIT == "testing":
-    OUTPUT_DIR_INPUT = "data/testing/input"
-    OUTPUT_DIR_TARGET = "data/testing/target"
+    OUTPUT_DIR_INPUT = PARENT_DIR / "model_input/data/testing/input"
+    OUTPUT_DIR_TARGET = PARENT_DIR / "model_input/data/testing/target"
 elif DATASET_SPLIT == "validation":
-    OUTPUT_DIR_INPUT = "data/validation/input"
-    OUTPUT_DIR_TARGET = "data/validation/target"
+    OUTPUT_DIR_INPUT = PARENT_DIR / "model_input/data/validation/input"
+    OUTPUT_DIR_TARGET = PARENT_DIR / "model_input/data/validation/target"
 else:
     raise ValueError(f"Invalid DATASET_SPLIT: {DATASET_SPLIT}. Must be 'training', 'testing', or 'validation'")
 
+data_repo_setup(PARENT_DIR, OUTPUT_DIR_INPUT, OUTPUT_DIR_TARGET)
 createDataTensorsFromScenes(SCENES_ROOT, OUTPUT_DIR_INPUT, OUTPUT_DIR_TARGET)
 print(f"Created data tensors in {OUTPUT_DIR_INPUT} and {OUTPUT_DIR_TARGET}")    
-
