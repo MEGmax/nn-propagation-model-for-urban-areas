@@ -43,7 +43,7 @@ def load_model(checkpoint_path: str, device: str = 'cpu'):
         'time_emb_dim': 128,
         'cond_emb_dim': 64
     }
-    
+
     model = TimeCondUNet(**model_config)
     
     # Checkpoint already loaded above
