@@ -1,11 +1,11 @@
 import random
 import os
-import bpy
+# import bpy
 import shutil
 import math
 import sys
 import argparse
-import mathutils
+# import mathutils
 import numpy as np
 
 from pathlib import Path
@@ -63,7 +63,7 @@ def parse_arguments():
     return args
 
 
-def repository_setup() -> None:
+def repository_setup(SCENE_DIR) -> None:
     # if repo does not exist, create it
     if not os.path.exists(SCENE_DIR):
         os.makedirs(SCENE_DIR)
@@ -156,7 +156,7 @@ def export_scene(scene_ID: int) -> None:
 
 def main():
     args = parse_arguments()
-    repository_setup()
+    repository_setup(SCENE_DIR)
     for i in range(args.num_scenes):
         print("GENERATION SCENE ", i)
         scene_generation(args.buildings_in_center)
@@ -164,4 +164,8 @@ def main():
 
 
 if __name__ == "__main__":
+    # These are blender specfic libraries that we don't want to import when 
+    # importing this file in another script.
+    import mathutils
+    import bpy
     main()

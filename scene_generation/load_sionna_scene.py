@@ -12,7 +12,7 @@ import random
 # pip install sionna
 # pip install tensorflow
 # pip install matplotlib
-# Need python 3.12 and sionna version 1.*
+# Need python 3.12, sionna version 1.*, tensorflow version 2.18.0
 
 # If you need to have llvm first in your PATH, run:
 # echo 'export PATH="/opt/homebrew/opt/llvm/bin:$PATH"' >> ~/.zshrc
@@ -31,8 +31,9 @@ for i in range(len(list(Path(SCENE_DIR).iterdir()))):
     # scene = load_scene(TRUTH_DIR / "ground_truth.xml")
 
     #set frequency in between 1 GHz and 5.3 GHz
-    scene.frequency = int(random.uniform(1e9, 5.3e9))
-    print(f"Set frequency to {scene.frequency} GHz")
+    # scene.frequency = int(random.uniform(1e9, 5.3e9))
+    scene.frequency = 5.3e9
+    print(f"Set frequency to {scene.frequency} Hz")
 
     scene.tx_array = PlanarArray(
         num_rows=4,
@@ -46,7 +47,8 @@ for i in range(len(list(Path(SCENE_DIR).iterdir()))):
     # place transmitter at origin
     tx = Transmitter("tx", [0, 0, 1.5], [0.0, 0.0, 0.0])
     scene.add(tx)
-    # Prof offered to change camera location to 2 meters?
+
+    # place camera 30 meters above center of scene
     my_cam = Camera(position=[0, 0, 30], look_at=tx.position)
 
     # Instantiate the radio map solver
@@ -81,5 +83,10 @@ for i in range(len(list(Path(SCENE_DIR).iterdir()))):
     # rss_map[rss_map == 99999] = rss_map.min()
 
     np.save(SCENE_DIR / f"scene{i}" / f"rss_values{i}.npy", rm.rss)
+
+    # debug statement to save rendered radio map from Sionna
+    img = scene.render(camera=my_cam, radio_map=rm)
+    img.savefig(str(SCENE_DIR / f"scene{i}" / f"rss_render{i}.png"))
+    plt.close(img)
 
     print(f"Done rendering scene {i}")

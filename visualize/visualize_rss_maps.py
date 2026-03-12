@@ -39,7 +39,7 @@ from matplotlib.gridspec import GridSpec
 from tqdm import tqdm
 
 # Add models to path
-sys.path.insert(0, str(Path(__file__).parent / 'models'))
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent / 'models'))
 
 from diffusion import TimeCondUNet, RadioMapDataset, Diffusion
 

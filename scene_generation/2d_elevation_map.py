@@ -83,23 +83,20 @@ def generate_elevation_map(meshes_dir, output_prefix):
                     if path.contains_point((ix + 0.5, iy + 0.5)):
                         height_map[iy, ix] = max(height_map[iy, ix], tri_z)
 
+
+
     normalized = np.clip(height_map / H_MAX, 0.0, 1.0)
     height_uint8 = (normalized * 255).astype(np.uint8)
-    print(f"Elevation map size: {height_uint8.shape}, min: {height_uint8.min()}, max: {height_uint8.max()}")
-    print(height_map.astype(np.float32))
-
-    # Save raw grayscale
-    #plt.imsave(f"{output_prefix}_raw.png", height_uint8, cmap="gray")
-
+    #print(f"Elevation map size: {height_uint8.shape}, min: {height_uint8.min()}, max: {height_uint8.max()}")
     # Save .npy file of the height values normalized
-    np.save(f"{output_prefix}.npy", normalized.astype(np.float32))
+    #np.save(f"{output_prefix}.npy", normalized.astype(np.float32))
 
-    #np.save(f"{output_prefix}.npy", height_map.astype(np.float32))
+    np.save(f"{output_prefix}.npy", height_map.astype(np.float32))
 
 
     # Save colored visualization
     plt.figure(figsize=(width , height), dpi=300)
-    img = plt.imshow(normalized, origin="lower", cmap="gray", vmin=0, vmax=1)
+    img = plt.imshow(height_map, origin="lower", cmap="gray", vmin=0, vmax=H_MAX)
     cbar = plt.colorbar(img)
     cbar.set_label("Height (m)")
     plt.axis("off")
@@ -110,10 +107,7 @@ def generate_elevation_map(meshes_dir, output_prefix):
 
     print(f"Saved elevation maps → {output_prefix}.png")
 
-# =========================
-# MAIN AUTOMATION LOOP
-# =========================
-
+# Automation Loop
 for scene_name in sorted(os.listdir(SCENES_ROOT)):
     scene_path = os.path.join(SCENES_ROOT, scene_name)
 
