@@ -70,14 +70,20 @@ def scene_to_tensor_simple(scene_dir: str, freq_log_scale=True):
         raise RuntimeError(f"No elevation.npy found in {scene_dir}")
     elevation = np.load(elevation_files[0])  # H x W 
 
-
+    """
     rss_files = list(scene_path.glob("rss_values*.npy"))
     if not rss_files:
         raise RuntimeError(f"No rss_values*.npy found in {scene_dir}")
     rss = np.load(rss_files[0])  # H x W
+    """
+    pathloss_files = list(scene_path.glob("pathloss_values*.npy"))
+    if not pathloss_files:
+        raise RuntimeError(f"No pathloss_values*.npy found in {scene_dir}")
+    pathloss = np.load(pathloss_files[0])  # H x W
 
     # Resize elevation map to shape of RSS map if needed
-    H, W = rss.shape[1], rss.shape[2]
+    H, W = pathloss.shape[0], pathloss.shape[1]
+    print(f"Original elevation shape: {elevation.shape}, RSS shape: {pathloss.shape}")
     elevation_rs = resize(
         elevation,
         (H, W),
@@ -119,14 +125,7 @@ def scene_to_tensor_simple(scene_dir: str, freq_log_scale=True):
     distance_norm = distance_wavelengths / 353.0  # simple normalization, can be tuned
     distance_norm = np.tanh(distance_norm * 2 - 1)
 
-    # Create frequency map (constant channel)
-    # freq_map = np.full((H, W), np.log10(frequency_hz), dtype=np.float32)
-    # if not freq_log_scale:
-    #      freq_map = np.full((H, W), frequency_hz / 1e9, dtype=np.float32) # normalize by GHz if not log
-
-    #print(f"Distance range after normalization: min={distance_norm.min()}, max={distance_norm.max()}")
-
-     # Stack input channels: elevation, distance, frequency
+    # Stack input channels: elevation, distance, frequency
     input_tensor = np.stack([
         elevation_norm.astype(np.float32),
         distance_norm.astype(np.float32)
@@ -134,11 +133,22 @@ def scene_to_tensor_simple(scene_dir: str, freq_log_scale=True):
 
     # Target tensor: RSS
     # Convert rss from dB to dBm
-    rss_dbm = 10 * np.log10(rss) + 30
-    target_tensor = rss_dbm.astype(np.float32)
+    # pathloss = 10 * np.log10(pathloss) + 30
+    mean_global =  95.39616 # computed across all scenes
+    std_global = 300.0    # computed across all scenes
+
+    # simple mean-zero normalization
+    normalized_pathloss = (pathloss - mean_global) / std_global
+    normalized_pathloss = np.tanh(normalized_pathloss)
+    # for denormalization: pathloss_recovered = normalized_map_tanh * std_global + mean_global
+
+    target_tensor = normalized_pathloss.astype(np.float32)
 
     # Permute target tensor to H x W X C
+    if target_tensor.ndim == 2:
+        target_tensor = np.expand_dims(target_tensor, axis=0)  # C x H x W
     target_tensor = np.transpose(target_tensor, (1, 2, 0))  # H x W x C
+    print(f"Input tensor shape: {input_tensor.shape}, Target tensor shape: {target_tensor.shape}")
     return input_tensor, target_tensor
 
 
