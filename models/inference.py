@@ -85,10 +85,16 @@ def run_inference(model, cond_input: np.ndarray, device: str = 'cpu',
     with torch.no_grad():
         # shape: (B, 1, H, W)
         samples = diffusion.sample(cond_tensor, steps=sampling_steps)
+        mean_global =  95.39616 # computed across all scenes
+        std_global = 300.0    # computed across all scenes
+        # Denormalization (inference)
+        samples = np.clip(samples, -0.999, 0.999)
+        denorm = np.arctanh(samples) * std_global + mean_global
     
+    print(f"Sampled tensor shape: {samples.shape}, min: {samples.min().item():.4f}, max: {samples.max().item():.4f}")
+    print(f"Denormalized tensor shape: {denorm.shape}, min: {denorm.min().item():.2f} dBm, max: {denorm.max().item():.2f} dBm")
     # Convert back to numpy: (B, 1, H, W) -> (H, W, 1)
-    rss_prediction = samples.squeeze(0).permute(1, 2, 0).cpu().numpy()
-    
+    rss_prediction = denorm.squeeze(0).permute(1, 2, 0).cpu().numpy()
     return rss_prediction
 
 
