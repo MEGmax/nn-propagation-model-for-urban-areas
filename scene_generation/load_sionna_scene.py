@@ -25,14 +25,21 @@ BASE_DIR = Path(__file__).resolve().parent
 SCENE_DIR = BASE_DIR / "automated_scenes"
 TRUTH_DIR = BASE_DIR / "ground_truth"
 
-for i in range(len(list(Path(SCENE_DIR).iterdir()))):
+def _to_numpy(array_like):
+    """Convert tensors/array-like objects from Sionna/Mitsuba to NumPy arrays."""
+    if hasattr(array_like, "numpy"):
+        return array_like.numpy()
+    return np.array(array_like)
+
+#for i in range(len(list(Path(SCENE_DIR).iterdir()))):
+for i in range(5):
     print(f"Rendering scene {i}...")
     scene = load_scene(SCENE_DIR / f"scene{i}" / f"scene{i}.xml")
     # scene = load_scene(TRUTH_DIR / "ground_truth.xml")
 
     #set frequency in between 1 GHz and 5.3 GHz
-    # scene.frequency = int(random.uniform(1e9, 5.3e9))
-    scene.frequency = 5.3e9
+    scene.frequency = int(random.uniform(1e9, 5.3e9))
+    #scene.frequency = 5.3e9
     print(f"Set frequency to {scene.frequency} Hz")
 
     scene.tx_array = PlanarArray(
@@ -70,19 +77,24 @@ for i in range(len(list(Path(SCENE_DIR).iterdir()))):
         "tx_position": [np.array(tx.position.x).item(), np.array(tx.position.y).item(), np.array(tx.position.z).item()],
         "tx_orientation": [np.array(tx.orientation.x).item(), np.array(tx.orientation.y).item(), np.array(tx.orientation.z).item()],
     }
+
     metadata_path = SCENE_DIR / f"scene{i}" / "tx_metadata.json"
 
     with open(metadata_path, "w") as f:
         json.dump(scene_config, f, indent=4)
 
-    # Handle -inf values before saving
-    # rss_map = rm.rss
-    # rss_map[rss_map == -np.inf] = 99999
+    # additionally calculate pathloss
+    path_gain_linear = _to_numpy(rm.path_gain)
 
-    # set -inf values back to minimum for difference calculation
-    # rss_map[rss_map == 99999] = rss_map.min()
+    # Path loss in dB uses path gain convention from Sionna coverage map:
+    # path_loss_db = -10 * log10(path_gain_linear).
+    path_gain_safe = np.clip(path_gain_linear, 1e-30, None)
+    path_loss_db = -10.0 * np.log10(path_gain_safe)
 
-    np.save(SCENE_DIR / f"scene{i}" / f"rss_values{i}.npy", rm.rss)
+    pathloss_path = SCENE_DIR / f"scene{i}" 
+
+    np.save(pathloss_path / f"pathloss_values{i}.npy", path_loss_db.astype(np.float32))
+    #np.save(SCENE_DIR / f"scene{i}" / f"rss_values{i}.npy", rm.rss)
 
     # debug statement to save rendered radio map from Sionna
     img = scene.render(camera=my_cam, radio_map=rm)
