@@ -87,7 +87,7 @@ def scene_to_tensor_simple(scene_dir: str, freq_log_scale=True):
     ).astype(np.float32)
 
     # Normalize elevation to 0-1
-    elevation_norm = np.tanh((elevation_rs / H_MAX)* 2 - 1)  # simple normalization, can be tuned
+    elevation_norm = np.tanh(elevation_rs / H_MAX)  # simple normalization, can be tuned
     # Print range of normalized elevation for debugging
     #print(f"Elevation range after normalization: min={elevation_norm.min()}, max={elevation_norm.max()}")
 
