@@ -93,7 +93,9 @@ def scene_to_tensor_simple(scene_dir: str, freq_log_scale=True):
     ).astype(np.float32)
 
     # Normalize elevation to 0-1
-    elevation_norm = np.tanh(elevation_rs / H_MAX)  # simple normalization, can be tuned
+    #elevation_norm = np.tanh(elevation_rs / H_MAX)  # simple normalization, can be tuned
+    elevation_norm = elevation_rs / H_MAX
+    elevation_norm = elevation_norm * 2 - 1
     # Print range of normalized elevation for debugging
     #print(f"Elevation range after normalization: min={elevation_norm.min()}, max={elevation_norm.max()}")
 
@@ -122,8 +124,10 @@ def scene_to_tensor_simple(scene_dir: str, freq_log_scale=True):
     c = 3e8
     wavelength = c / frequency_hz
     distance_wavelengths = distance_map / wavelength
-    distance_norm = distance_wavelengths / 353.0  # simple normalization, can be tuned
-    distance_norm = np.tanh(distance_norm * 2 - 1)
+    MAX_DISTANCE_WAVELENGTHS = 353.0
+    distance_norm = distance_wavelengths / MAX_DISTANCE_WAVELENGTHS
+    distance_norm = np.clip(distance_norm, 0, 1)
+    distance_norm = distance_norm * 2 - 1
 
     # Stack input channels: elevation, distance, frequency
     input_tensor = np.stack([
@@ -138,9 +142,16 @@ def scene_to_tensor_simple(scene_dir: str, freq_log_scale=True):
     std_global = 300.0    # computed across all scenes
 
     # simple mean-zero normalization
-    normalized_pathloss = (pathloss - mean_global) / std_global
-    normalized_pathloss = np.tanh(normalized_pathloss)
+    #normalized_pathloss = (pathloss - mean_global) / std_global
+    #normalized_pathloss = np.tanh(normalized_pathloss)
     # for denormalization: pathloss_recovered = normalized_map_tanh * std_global + mean_global
+
+    #linar normalization 
+    PATHLOSS_MIN = 0.0
+    PATHLOSS_MAX = 300.0
+
+    normalized_pathloss = (pathloss - PATHLOSS_MIN) / (PATHLOSS_MAX - PATHLOSS_MIN)
+    normalized_pathloss = normalized_pathloss * 2.0 - 1.0   # scale to [-1,1]
 
     target_tensor = normalized_pathloss.astype(np.float32)
 
