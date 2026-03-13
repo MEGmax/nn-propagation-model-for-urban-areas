@@ -21,7 +21,7 @@ if "DRJIT_LIBLLVM_PATH" not in os.environ:
 # pip install sionna
 # pip install tensorflow
 # pip install matplotlib
-# Need python 3.12, sionna version 1.*, tensorflow version 2.18.0
+# Need python 3.12, sionna version 1.*, tensorflow version 2.20.0
 
 # If you need to have llvm first in your PATH, run:
 # echo 'export PATH="/opt/homebrew/opt/llvm/bin:$PATH"' >> ~/.zshrc
@@ -53,11 +53,9 @@ for i in range(len(list(Path(SCENE_DIR).iterdir()))):
     print(f"Set frequency to {scene.frequency} Hz")
 
     scene.tx_array = PlanarArray(
-        num_rows=4,
-        num_cols=4,
-        vertical_spacing=0.5,
-        horizontal_spacing=0.5,
-        pattern="tr38901",
+        num_rows=1,
+        num_cols=1,
+        pattern="iso",
         polarization="V",
     )
 
