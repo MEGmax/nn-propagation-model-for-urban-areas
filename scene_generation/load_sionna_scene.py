@@ -3,11 +3,20 @@ import numpy as np
 import tensorflow as tf
 import sionna.rt
 import json
+import drjit as dr
 
 from sionna.rt import load_scene, PlanarArray, Transmitter, Receiver, Camera, RadioMapSolver
 from pathlib import Path
-
 import random
+import os
+if "DRJIT_LIBLLVM_PATH" not in os.environ:
+    for llvm_path in (
+        "/opt/homebrew/opt/llvm/lib/libLLVM.dylib",
+        "/usr/local/opt/llvm/lib/libLLVM.dylib",
+    ):
+        if Path(llvm_path).exists():
+            os.environ["DRJIT_LIBLLVM_PATH"] = llvm_path
+            break
 
 # pip install sionna
 # pip install tensorflow
@@ -21,6 +30,8 @@ import random
 #   export LDFLAGS="-L/opt/homebrew/opt/llvm/lib"
 #   export CPPFLAGS="-I/opt/homebrew/opt/llvm/include"
 
+
+
 BASE_DIR = Path(__file__).resolve().parent
 SCENE_DIR = BASE_DIR / "automated_scenes"
 TRUTH_DIR = BASE_DIR / "ground_truth"
@@ -31,8 +42,7 @@ def _to_numpy(array_like):
         return array_like.numpy()
     return np.array(array_like)
 
-#for i in range(len(list(Path(SCENE_DIR).iterdir()))):
-for i in range(5):
+for i in range(len(list(Path(SCENE_DIR).iterdir()))):
     print(f"Rendering scene {i}...")
     scene = load_scene(SCENE_DIR / f"scene{i}" / f"scene{i}.xml")
     # scene = load_scene(TRUTH_DIR / "ground_truth.xml")
@@ -71,6 +81,7 @@ for i in range(5):
         orientation=[0, 0, 0],
     )  # Orientation of the radio map, e.g., could be also vertical
 
+
     # save configuration of scene
     scene_config = {
         "frequency": np.array(scene.frequency).item(),
@@ -90,15 +101,26 @@ for i in range(5):
     # path_loss_db = -10 * log10(path_gain_linear).
     path_gain_safe = np.clip(path_gain_linear, 1e-30, None)
     path_loss_db = -10.0 * np.log10(path_gain_safe)
-
     pathloss_path = SCENE_DIR / f"scene{i}" 
+    path_loss_db = path_loss_db.squeeze()
+    print("shape of path loss map:", path_loss_db.shape)
 
     np.save(pathloss_path / f"pathloss_values{i}.npy", path_loss_db.astype(np.float32))
+
     #np.save(SCENE_DIR / f"scene{i}" / f"rss_values{i}.npy", rm.rss)
 
     # debug statement to save rendered radio map from Sionna
-    img = scene.render(camera=my_cam, radio_map=rm)
-    img.savefig(str(SCENE_DIR / f"scene{i}" / f"rss_render{i}.png"))
-    plt.close(img)
+    # img = scene.render(camera=my_cam, radio_map=rm)
+    # img.savefig(str(SCENE_DIR / f"scene{i}" / f"rss_render{i}.png"))
+    # plt.close(img)
+
+    # image rendering of pathloss map
+    save_file = os.path.join(pathloss_path, "pathloss_map.png")
+    plt.figure(figsize=(6,6))
+    plt.imshow(path_loss_db, origin="lower", cmap="viridis")
+    plt.colorbar(label="Path Loss (dB)")
+    plt.title("Path Loss Map")
+    plt.savefig(save_file, dpi=300, bbox_inches="tight")
+    plt.close()
 
     print(f"Done rendering scene {i}")
