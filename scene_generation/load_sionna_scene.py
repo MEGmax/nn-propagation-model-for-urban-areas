@@ -9,14 +9,6 @@ from sionna.rt import load_scene, PlanarArray, Transmitter, Receiver, Camera, Ra
 from pathlib import Path
 import random
 import os
-if "DRJIT_LIBLLVM_PATH" not in os.environ:
-    for llvm_path in (
-        "/opt/homebrew/opt/llvm/lib/libLLVM.dylib",
-        "/usr/local/opt/llvm/lib/libLLVM.dylib",
-    ):
-        if Path(llvm_path).exists():
-            os.environ["DRJIT_LIBLLVM_PATH"] = llvm_path
-            break
 
 # pip install sionna
 # pip install tensorflow
@@ -60,7 +52,7 @@ for i in range(len(list(Path(SCENE_DIR).iterdir()))):
     )
 
     # place transmitter at origin
-    tx = Transmitter("tx", [0, 0, 1.5], [0.0, 0.0, 0.0])
+    tx = Transmitter("tx", [0, 0, 3.0], [0.0, 0.0, 0.0])
     scene.add(tx)
 
     # place camera 30 meters above center of scene
