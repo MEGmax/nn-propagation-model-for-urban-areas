@@ -90,7 +90,8 @@ for i in range(len(list(Path(SCENE_DIR).iterdir()))):
     # Path loss in dB uses path gain convention from Sionna coverage map:
     # path_loss_db = -10 * log10(path_gain_linear).
     path_gain_safe = np.clip(path_gain_linear, 1e-30, None)
-    path_loss_db = -10.0 * np.log10(path_gain_safe)
+    path_loss_db = -10.0 * np.log10(path_gain_linear)
+    path_loss_db = np.clip(path_loss_db, 0, 200)  # Clip to a reasonable range
     pathloss_path = SCENE_DIR / f"scene{i}" 
     path_loss_db = path_loss_db.squeeze()
     print("shape of path loss map:", path_loss_db.shape)
