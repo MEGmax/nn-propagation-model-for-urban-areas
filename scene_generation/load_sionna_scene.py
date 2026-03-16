@@ -1,46 +1,65 @@
-import matplotlib.pyplot as plt
-import numpy as np
-import tensorflow as tf
-import sionna.rt
-import json
+from __future__ import annotations
 
-from sionna.rt import load_scene, PlanarArray, Transmitter, Receiver, Camera, RadioMapSolver
+import json
+import sys
 from pathlib import Path
 
-import random
+import matplotlib.pyplot as plt
+import numpy as np
+from sionna.rt import Camera, PlanarArray, RadioMapSolver, Transmitter, load_scene
 
-# pip install sionna
-# pip install tensorflow
-# pip install matplotlib
-# Need python 3.12, sionna version 1.*, tensorflow version 2.18.0
+try:
+    import tomllib
+except ModuleNotFoundError:  # pragma: no cover
+    import tomli as tomllib
 
-# If you need to have llvm first in your PATH, run:
-# echo 'export PATH="/opt/homebrew/opt/llvm/bin:$PATH"' >> ~/.zshrc
-
-# For compilers to find llvm you may need to set:
-#   export LDFLAGS="-L/opt/homebrew/opt/llvm/lib"
-#   export CPPFLAGS="-I/opt/homebrew/opt/llvm/include"
 
 BASE_DIR = Path(__file__).resolve().parent
+PROJECT_ROOT = BASE_DIR.parent
 SCENE_DIR = BASE_DIR / "automated_scenes"
-TRUTH_DIR = BASE_DIR / "ground_truth"
+CONFIG_PATH = PROJECT_ROOT / "configs" / "config.toml"
+
+DEFAULT_FREQUENCY_HZ = 3_500_000_000
+RADIO_MAP_CELL_SIZE_M = (0.15, 0.15)
+RADIO_MAP_CENTER_M = (0.0, 0.0, 1.5)
+RADIO_MAP_SIZE_M = (16.0, 16.0)
+RADIO_MAP_MAX_DEPTH = 32
+RADIO_MAP_SAMPLES_PER_TX = 10**8
+
+
+def load_frequency_hz() -> float:
+    if not CONFIG_PATH.exists():
+        return float(DEFAULT_FREQUENCY_HZ)
+    with CONFIG_PATH.open("rb") as handle:
+        config = tomllib.load(handle)
+    return float(config.get("Frequency", {}).get("frequency", DEFAULT_FREQUENCY_HZ))
+
+
+def iter_scene_dirs() -> list[Path]:
+    return sorted([path for path in SCENE_DIR.iterdir() if path.is_dir() and (path / f"{path.name}.xml").exists()])
+
 
 def _to_numpy(array_like):
-    """Convert tensors/array-like objects from Sionna/Mitsuba to NumPy arrays."""
     if hasattr(array_like, "numpy"):
         return array_like.numpy()
-    return np.array(array_like)
+    return np.asarray(array_like)
 
-#for i in range(len(list(Path(SCENE_DIR).iterdir()))):
-for i in range(5):
-    print(f"Rendering scene {i}...")
-    scene = load_scene(SCENE_DIR / f"scene{i}" / f"scene{i}.xml")
-    # scene = load_scene(TRUTH_DIR / "ground_truth.xml")
 
-    #set frequency in between 1 GHz and 5.3 GHz
-    scene.frequency = int(random.uniform(1e9, 5.3e9))
-    #scene.frequency = 5.3e9
-    print(f"Set frequency to {scene.frequency} Hz")
+def _to_scalar(value) -> float:
+    array = _to_numpy(value).reshape(-1)
+    if array.size == 0:
+        raise ValueError("Expected scalar-like value")
+    return float(array[0])
+
+
+def render_scene(scene_dir: Path, frequency_hz: float) -> None:
+    scene_name = scene_dir.name
+    scene_xml = scene_dir / f"{scene_name}.xml"
+    print(f"Rendering {scene_name} from {scene_xml}...")
+
+    scene = load_scene(scene_xml)
+    scene.frequency = int(frequency_hz)
+    print(f"Set frequency to {_to_scalar(scene.frequency)} Hz")
 
     scene.tx_array = PlanarArray(
         num_rows=4,
@@ -51,54 +70,63 @@ for i in range(5):
         polarization="V",
     )
 
-    # place transmitter at origin
     tx = Transmitter("tx", [0, 0, 1.5], [0.0, 0.0, 0.0])
     scene.add(tx)
 
-    # place camera 30 meters above center of scene
-    my_cam = Camera(position=[0, 0, 30], look_at=tx.position)
-
-    # Instantiate the radio map solver
-    rm_solver = RadioMapSolver()
-    # Compute radio map using the mesh example
-    rm = rm_solver(
+    camera = Camera(position=[0, 0, 30], look_at=tx.position)
+    solver = RadioMapSolver()
+    radio_map = solver(
         scene,
-        max_depth=32,  # Maximum number of ray scene interactions
-        samples_per_tx=10**8,  # If you increase: less noise, but more memory required
-        cell_size=(0.15, 0.15),  # Resolution of the radio map
-        center=[0, 0, 1.5],  # Center of the radio map
-        size=[16, 16],  # Total size of the radio map
+        max_depth=RADIO_MAP_MAX_DEPTH,
+        samples_per_tx=RADIO_MAP_SAMPLES_PER_TX,
+        cell_size=RADIO_MAP_CELL_SIZE_M,
+        center=RADIO_MAP_CENTER_M,
+        size=RADIO_MAP_SIZE_M,
         orientation=[0, 0, 0],
-    )  # Orientation of the radio map, e.g., could be also vertical
+    )
 
-    # save configuration of scene
-    scene_config = {
-        "frequency": np.array(scene.frequency).item(),
-        "tx_position": [np.array(tx.position.x).item(), np.array(tx.position.y).item(), np.array(tx.position.z).item()],
-        "tx_orientation": [np.array(tx.orientation.x).item(), np.array(tx.orientation.y).item(), np.array(tx.orientation.z).item()],
+    scene_metadata = {
+        "frequency": _to_scalar(scene.frequency),
+        "tx_position": [
+            _to_scalar(tx.position.x),
+            _to_scalar(tx.position.y),
+            _to_scalar(tx.position.z),
+        ],
+        "tx_orientation": [
+            _to_scalar(tx.orientation.x),
+            _to_scalar(tx.orientation.y),
+            _to_scalar(tx.orientation.z),
+        ],
+        "radio_map": {
+            "cell_size": list(RADIO_MAP_CELL_SIZE_M),
+            "center": list(RADIO_MAP_CENTER_M),
+            "size": list(RADIO_MAP_SIZE_M),
+            "orientation": [0.0, 0.0, 0.0],
+        },
     }
+    with (scene_dir / "tx_metadata.json").open("w", encoding="utf-8") as handle:
+        json.dump(scene_metadata, handle, indent=2)
 
-    metadata_path = SCENE_DIR / f"scene{i}" / "tx_metadata.json"
-
-    with open(metadata_path, "w") as f:
-        json.dump(scene_config, f, indent=4)
-
-    # additionally calculate pathloss
-    path_gain_linear = _to_numpy(rm.path_gain)
-
-    # Path loss in dB uses path gain convention from Sionna coverage map:
-    # path_loss_db = -10 * log10(path_gain_linear).
+    path_gain_linear = _to_numpy(radio_map.path_gain)
     path_gain_safe = np.clip(path_gain_linear, 1e-30, None)
     path_loss_db = -10.0 * np.log10(path_gain_safe)
+    np.save(scene_dir / f"pathloss_values_{scene_name}.npy", path_loss_db.astype(np.float32))
 
-    pathloss_path = SCENE_DIR / f"scene{i}" 
+    image = scene.render(camera=camera, radio_map=radio_map)
+    image.savefig(str(scene_dir / f"pathloss_render_{scene_name}.png"))
+    plt.close(image)
+    print(f"Finished {scene_name}")
 
-    np.save(pathloss_path / f"pathloss_values{i}.npy", path_loss_db.astype(np.float32))
-    #np.save(SCENE_DIR / f"scene{i}" / f"rss_values{i}.npy", rm.rss)
 
-    # debug statement to save rendered radio map from Sionna
-    img = scene.render(camera=my_cam, radio_map=rm)
-    img.savefig(str(SCENE_DIR / f"scene{i}" / f"rss_render{i}.png"))
-    plt.close(img)
+def main() -> None:
+    frequency_hz = load_frequency_hz()
+    scene_dirs = iter_scene_dirs()
+    if not scene_dirs:
+        raise FileNotFoundError(f"No scene directories with XML files found in {SCENE_DIR}")
 
-    print(f"Done rendering scene {i}")
+    for scene_dir in scene_dirs:
+        render_scene(scene_dir, frequency_hz)
+
+
+if __name__ == "__main__":
+    main()
