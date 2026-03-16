@@ -1,271 +1,176 @@
-# =========================================================================
-# Inference Script for Conditional Diffusion Model
-# Generates radio map predictions from a trained model checkpoint
-# =========================================================================
+from __future__ import annotations
+
+import argparse
 import os
 import sys
-import argparse
 from pathlib import Path
 
-import torch
-import numpy as np
 import matplotlib.pyplot as plt
+import numpy as np
+import torch
 from matplotlib.colors import Normalize
 
-# Add parent directory to path for imports
-sys.path.insert(0, str(Path(__file__).parent))
-from diffusion import TimeCondUNet, Diffusion
+PROJECT_ROOT = Path(__file__).resolve().parent.parent
+if str(PROJECT_ROOT) not in sys.path:
+    sys.path.insert(0, str(PROJECT_ROOT))
+
+from common.pathloss import DEFAULT_STATS_FILENAME, denormalize_path_loss, load_stats, validate_stats  # noqa: E402
+from diffusion import Diffusion, TimeCondUNet  # noqa: E402
 
 
-def load_model(checkpoint_path: str, device: str = 'cpu'):
-    """Load a trained model from checkpoint."""
-    # Model configuration (must match training config)
-    # Check if we should use 2 or 3 channels by trying to load state dict
-    try:
-        checkpoint = torch.load(checkpoint_path, map_location=device, weights_only=True)
-        state_dict_to_check = checkpoint['model_state_dict'] if isinstance(checkpoint, dict) and 'model_state_dict' in checkpoint else checkpoint
-        
-        # Check kernel size of first layer 'cond_proj.0.weight'
-        # Shape is usually [out_channels, in_channels, kH, kW]
-        # We need in_channels (dim 1)
-        in_channels = state_dict_to_check['cond_proj.0.weight'].shape[1]
-        print(f"Detected model expecting {in_channels} input channels.")
-    except Exception as e:
-        print(f"Warning: Could not detect channel count from checkpoint ({e}), defaulting to 2.")
-        in_channels = 2
-
-    model_config = {
-        'in_ch': 1,
-        'cond_channels': in_channels,  # elevation, distance, (frequency optional)
-        'base_ch': 32,
-        'channel_mults': (1, 2, 4),
-        'num_res_blocks': 2,
-        'time_emb_dim': 128,
-        'cond_emb_dim': 64
+def load_checkpoint_payload(checkpoint_path: str, device: str):
+    checkpoint = torch.load(checkpoint_path, map_location=device)
+    if isinstance(checkpoint, dict) and "model_state_dict" in checkpoint:
+        return checkpoint
+    return {
+        "model_state_dict": checkpoint,
+        "model_config": {
+            "noisy_channels": 1,
+            "cond_channels": 2,
+            "base_ch": 32,
+            "channel_mults": (1, 2, 4),
+            "num_res_blocks": 2,
+            "time_emb_dim": 128,
+            "out_ch": 1,
+        },
+        "normalization_stats": None,
     }
 
+
+def load_model(checkpoint_path: str, device: str = "cpu") -> tuple[TimeCondUNet, dict]:
+    payload = load_checkpoint_payload(checkpoint_path, device)
+    model_config = payload["model_config"]
     model = TimeCondUNet(**model_config)
-    
-    # Checkpoint already loaded above
-    if isinstance(checkpoint, dict) and 'model_state_dict' in checkpoint:
-        model.load_state_dict(checkpoint['model_state_dict'])
-    else:
-        model.load_state_dict(checkpoint)
-    
+    model.load_state_dict(payload["model_state_dict"])
     model.to(device)
     model.eval()
-    
-    return model
+    return model, payload
 
 
-def run_inference(model, cond_input: np.ndarray, device: str = 'cpu', 
-                  sampling_steps: int = 50, timesteps: int = 1000):
-    """
-    Run diffusion model inference to generate RSS prediction.
-    
-    Args:
-        model: Trained TimeCondUNet model
-        cond_input: Conditioning input array (H, W, 3) with channels [elevation, distance, frequency]
-        device: Device to run inference on
-        sampling_steps: Number of reverse diffusion steps
-        timesteps: Total diffusion timesteps (should match training)
-    
-    Returns:
-        RSS prediction as numpy array (H, W, 1) in dBm
-    """
-    # Convert input to torch tensor with batch dimension
-    # Input expected: (H, W, 3) -> need (B, 3, H, W)
-    cond_tensor = torch.from_numpy(cond_input).permute(2, 0, 1).unsqueeze(0).float()
-    cond_tensor = cond_tensor.to(device)
-    
-    # Create diffusion sampler
+def run_inference(
+    model: TimeCondUNet,
+    cond_input: np.ndarray,
+    stats,
+    device: str = "cpu",
+    sampling_steps: int = 50,
+    timesteps: int = 1000,
+) -> np.ndarray:
+    if cond_input.ndim != 3 or cond_input.shape[2] != 2:
+        raise ValueError(f"Expected conditioning tensor shape (H, W, 2), got {cond_input.shape}")
+
+    cond_tensor = torch.from_numpy(cond_input).permute(2, 0, 1).unsqueeze(0).float().to(device)
     diffusion = Diffusion(model, timesteps=timesteps, device=device)
-    
-    # Sample from the model
+
     with torch.no_grad():
-        # shape: (B, 1, H, W)
         samples = diffusion.sample(cond_tensor, steps=sampling_steps)
-        mean_global =  95.39616 # computed across all scenes
-        std_global = 300.0    # computed across all scenes
-        # Denormalization (inference)
-        samples = np.clip(samples, -0.999, 0.999)
-        denorm = np.arctanh(samples) * std_global + mean_global
-    
-    print(f"Sampled tensor shape: {samples.shape}, min: {samples.min().item():.4f}, max: {samples.max().item():.4f}")
-    print(f"Denormalized tensor shape: {denorm.shape}, min: {denorm.min().item():.2f} dBm, max: {denorm.max().item():.2f} dBm")
-    # Convert back to numpy: (B, 1, H, W) -> (H, W, 1)
-    rss_prediction = denorm.squeeze(0).permute(1, 2, 0).cpu().numpy()
-    return rss_prediction
+
+    normalized_path_loss = samples.squeeze(0).permute(1, 2, 0).cpu().numpy()
+    return denormalize_path_loss(normalized_path_loss, stats)
 
 
-def save_rss_numpy(rss_prediction: np.ndarray, output_path: str):
-    """
-    Save RSS prediction as numpy file in the specified format.
-    
-    Output format:
-    - Shape: (H, W, 1) spatial map of signal strength
-    - Values: In dBm (decibels referenced to 1 milliwatt)
-    - Resolution: Matches input elevation map resolution
-    """
-    # Ensure shape is (H, W, 1)
-    if rss_prediction.ndim == 2:
-        rss_prediction = rss_prediction[:, :, np.newaxis]
-    
-    np.save(output_path, rss_prediction.astype(np.float32))
-    print(f"✓ Saved RSS values to: {output_path}")
-    print(f"  Shape: {rss_prediction.shape}")
-    print(f"  Value range: {rss_prediction.min():.2f} to {rss_prediction.max():.2f} dBm")
+def save_pathloss_numpy(path_loss_prediction: np.ndarray, output_path: str) -> None:
+    if path_loss_prediction.ndim == 2:
+        path_loss_prediction = path_loss_prediction[:, :, np.newaxis]
+    np.save(output_path, path_loss_prediction.astype(np.float32))
+    print(f"Saved path-loss tensor to: {output_path}")
+    print(f"Shape: {path_loss_prediction.shape}")
+    print(f"Value range: {path_loss_prediction.min():.2f} to {path_loss_prediction.max():.2f} dB")
 
 
-def save_rss_png(rss_prediction: np.ndarray, output_path: str, 
-                 vmin: float = None, vmax: float = None,
-                 cmap: str = 'jet', title: str = 'Predicted RSS Heatmap'):
-    """
-    Save RSS prediction as PNG visualization.
-    
-    Args:
-        rss_prediction: RSS values (H, W, 1) or (H, W) in dBm
-        output_path: Path to save PNG
-        vmin: Minimum value for colormap (weak signal). Auto if None.
-        vmax: Maximum value for colormap (strong signal). Auto if None.
-        cmap: Colormap to use
-        title: Title for the plot
-    """
-    # Squeeze to 2D for visualization
-    if rss_prediction.ndim == 3:
-        rss_2d = rss_prediction.squeeze(-1)
-    else:
-        rss_2d = rss_prediction
-    
-    # Auto-scale if not provided
+def save_pathloss_png(
+    path_loss_prediction: np.ndarray,
+    output_path: str,
+    vmin: float | None = None,
+    vmax: float | None = None,
+    cmap: str = "viridis",
+    title: str = "Predicted Path Loss",
+) -> None:
+    path_loss_2d = path_loss_prediction.squeeze(-1) if path_loss_prediction.ndim == 3 else path_loss_prediction
     if vmin is None:
-        vmin = rss_2d.min()
+        vmin = float(path_loss_2d.min())
     if vmax is None:
-        vmax = rss_2d.max()
-    
-    # Create figure
-    fig, ax = plt.subplots(figsize=(10, 8))
-    
-    # Plot heatmap with custom normalization
-    im = ax.imshow(rss_2d, cmap=cmap, norm=Normalize(vmin=vmin, vmax=vmax),
-                   origin='upper', aspect='equal')
-    
-    # Add colorbar
-    cbar = plt.colorbar(im, ax=ax, fraction=0.046, pad=0.04)
-    cbar.set_label('RSS (dBm)', fontsize=12)
-    
-    # Labels and title
-    ax.set_title(title, fontsize=14, fontweight='bold')
-    ax.set_xlabel('X (grid cells)', fontsize=11)
-    ax.set_ylabel('Y (grid cells)', fontsize=11)
-    
-    # Add statistics annotation
-    stats_text = (f"Min: {rss_2d.min():.1f} dBm\n"
-                  f"Max: {rss_2d.max():.1f} dBm\n"
-                  f"Mean: {rss_2d.mean():.1f} dBm")
-    ax.text(0.02, 0.98, stats_text, transform=ax.transAxes, fontsize=9,
-            verticalalignment='top', bbox=dict(boxstyle='round', facecolor='white', alpha=0.8))
-    
+        vmax = float(path_loss_2d.max())
+
+    figure, axis = plt.subplots(figsize=(10, 8))
+    image = axis.imshow(path_loss_2d, cmap=cmap, norm=Normalize(vmin=vmin, vmax=vmax), origin="upper")
+    colorbar = plt.colorbar(image, ax=axis, fraction=0.046, pad=0.04)
+    colorbar.set_label("Path Loss (dB)")
+    axis.set_title(title)
+    axis.set_xlabel("X (grid cells)")
+    axis.set_ylabel("Y (grid cells)")
     plt.tight_layout()
-    plt.savefig(output_path, dpi=150, bbox_inches='tight')
+    plt.savefig(output_path, dpi=150, bbox_inches="tight")
     plt.close()
-    
-    print(f"✓ Saved RSS visualization to: {output_path}")
+    print(f"Saved path-loss visualization to: {output_path}")
 
 
-def main():
-    parser = argparse.ArgumentParser(
-        description='Run inference with trained diffusion model for RSS prediction'
+def parse_args() -> argparse.Namespace:
+    parser = argparse.ArgumentParser(description="Run inference with the path-loss diffusion model")
+    parser.add_argument("--checkpoint", default="./checkpoints/model_final.pt", help="Path to model checkpoint")
+    parser.add_argument("--input", required=True, help="Path to conditioning tensor (.npy, shape H,W,2)")
+    parser.add_argument(
+        "--stats-file",
+        default=None,
+        help=f"Path to normalization stats JSON; defaults to checkpoint stats or {DEFAULT_STATS_FILENAME}",
     )
-    parser.add_argument('--checkpoint', type=str, 
-                        default='./checkpoints/model_final.pt',
-                        help='Path to model checkpoint')
-    parser.add_argument('--input', type=str, required=True,
-                        help='Path to input conditioning tensor (.npy file with shape H,W,3)')
-    parser.add_argument('--output-dir', type=str, default='../rss_visualizations',
-                        help='Directory to save outputs')
-    parser.add_argument('--output-name', type=str, default='prediction',
-                        help='Base name for output files (without extension)')
-    parser.add_argument('--sampling-steps', type=int, default=50,
-                        help='Number of reverse diffusion sampling steps')
-    parser.add_argument('--vmin', type=float, default=None,
-                        help='Minimum dBm value for visualization colormap (auto if not specified)')
-    parser.add_argument('--vmax', type=float, default=None,
-                        help='Maximum dBm value for visualization colormap (auto if not specified)')
-    parser.add_argument('--device', type=str, default=None,
-                        help='Device to run on (cuda/cpu). Auto-detected if not specified.')
-    
-    args = parser.parse_args()
-    
-    # Auto-detect device
-    if args.device is None:
-        device = 'cuda' if torch.cuda.is_available() else 'cpu'
-    else:
-        device = args.device
+    parser.add_argument("--output-dir", default="../pathloss_visualizations", help="Directory for outputs")
+    parser.add_argument("--output-name", default="prediction", help="Base name for output files")
+    parser.add_argument("--sampling-steps", type=int, default=50, help="Reverse diffusion steps")
+    parser.add_argument("--vmin", type=float, default=None, help="Minimum plot value")
+    parser.add_argument("--vmax", type=float, default=None, help="Maximum plot value")
+    parser.add_argument("--device", type=str, default=None, help="cuda or cpu")
+    return parser.parse_args()
+
+
+def main() -> None:
+    args = parse_args()
+    device = args.device or ("cuda" if torch.cuda.is_available() else "cpu")
     print(f"Using device: {device}")
-    
-    # Validate paths
+
     if not os.path.exists(args.checkpoint):
-        print(f"Error: Checkpoint not found: {args.checkpoint}")
-        sys.exit(1)
-    
+        raise FileNotFoundError(f"Checkpoint not found: {args.checkpoint}")
     if not os.path.exists(args.input):
-        print(f"Error: Input file not found: {args.input}")
-        sys.exit(1)
-    
-    # Create output directory
-    os.makedirs(args.output_dir, exist_ok=True)
-    
-    # Load model
-    print(f"Loading model from: {args.checkpoint}")
-    model = load_model(args.checkpoint, device)
-    print("✓ Model loaded successfully")
-    
-    # Load input conditioning data
-    print(f"Loading input from: {args.input}")
-    cond_input = np.load(args.input)
-    print(f"  Input shape: {cond_input.shape}")
-    
-    # Check what the model expects (it was loaded successfully above)
-    expected_channels = model.model_config['cond_channels'] if hasattr(model, 'model_config') else cond_input.shape[2]
-    # Or just check the first layer
-    try:
-        expected_channels = model.cond_proj[0].in_channels
-    except:
-        expected_channels = 3 # fallback
-        
-    print(f"Model expects {expected_channels} channels. Input has {cond_input.shape[2]} channels.")
-    
-    # Validate input shape
+        raise FileNotFoundError(f"Input file not found: {args.input}")
+
+    model, payload = load_model(args.checkpoint, device=device)
+    stats_payload = payload.get("normalization_stats")
+
+    if args.stats_file is not None:
+        stats = load_stats(Path(args.stats_file))
+    elif stats_payload is not None:
+        from common.pathloss import PathLossStats  # noqa: E402
+
+        stats = PathLossStats.from_dict(stats_payload)
+    else:
+        stats = load_stats(Path(DEFAULT_STATS_FILENAME))
+    validate_stats(stats)
+
+    cond_input = np.load(args.input).astype(np.float32)
+    expected_channels = model.cond_channels
     if cond_input.ndim != 3 or cond_input.shape[2] != expected_channels:
-        print(f"Error: Expected input shape (H, W, {expected_channels}), got {cond_input.shape}")
-        print("Input tensor:")
-        # print(cond_input)
-        sys.exit(1)
-    
-    # Run inference
-    print(f"Running inference with {args.sampling_steps} sampling steps...")
-    rss_prediction = run_inference(model, cond_input, device=device, 
-                                    sampling_steps=args.sampling_steps)
-    print("✓ Inference complete")
-    
-    # Save outputs
+        raise ValueError(f"Expected input shape (H, W, {expected_channels}), got {cond_input.shape}")
+
+    os.makedirs(args.output_dir, exist_ok=True)
+    path_loss_prediction = run_inference(
+        model=model,
+        cond_input=cond_input,
+        stats=stats,
+        device=device,
+        sampling_steps=args.sampling_steps,
+    )
+
     npy_path = os.path.join(args.output_dir, f"{args.output_name}.npy")
     png_path = os.path.join(args.output_dir, f"{args.output_name}.png")
-    
-    save_rss_numpy(rss_prediction, npy_path)
-    save_rss_png(rss_prediction, png_path, vmin=args.vmin, vmax=args.vmax)
-    
-    print("\n" + "="*60)
+    save_pathloss_numpy(path_loss_prediction, npy_path)
+    save_pathloss_png(path_loss_prediction, png_path, vmin=args.vmin, vmax=args.vmax)
+
+    print("\n" + "=" * 60)
     print("INFERENCE COMPLETE")
-    print("="*60)
-    print(f"RSS Numpy file: {npy_path}")
-    print(f"  - Shape: (H, W, 1) = {rss_prediction.shape}")
-    print(f"  - Values: dBm (decibels referenced to 1 milliwatt)")
-    print(f"  - Range: {rss_prediction.min():.2f} to {rss_prediction.max():.2f} dBm")
-    print(f"RSS Visualization: {png_path}")
-    print("="*60)
+    print("=" * 60)
+    print(f"Path-loss tensor: {npy_path}")
+    print(f"Path-loss visualization: {png_path}")
+    print("=" * 60)
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     main()
