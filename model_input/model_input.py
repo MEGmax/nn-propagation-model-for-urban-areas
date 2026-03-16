@@ -148,7 +148,7 @@ def scene_to_tensor_simple(scene_dir: str, freq_log_scale=True):
 
     #linar normalization 
     PATHLOSS_MIN = 0.0
-    PATHLOSS_MAX = 300.0
+    PATHLOSS_MAX = 200.0
 
     normalized_pathloss = (pathloss - PATHLOSS_MIN) / (PATHLOSS_MAX - PATHLOSS_MIN)
     normalized_pathloss = normalized_pathloss * 2.0 - 1.0   # scale to [-1,1]
