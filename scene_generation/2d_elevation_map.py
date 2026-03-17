@@ -95,8 +95,8 @@ def generate_elevation_map(meshes_dir, output_prefix):
 
 
     # Save colored visualization
-    plt.figure(figsize=(width , height), dpi=300)
-    img = plt.imshow(height_map, origin="lower", cmap="gray", vmin=0, vmax=H_MAX)
+    plt.figure()
+    img = plt.imshow(height_map, origin="upper", cmap="gray", vmin=0, vmax=H_MAX)
     cbar = plt.colorbar(img)
     cbar.set_label("Height (m)")
     plt.axis("off")
