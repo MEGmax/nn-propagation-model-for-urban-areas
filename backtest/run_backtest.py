@@ -1,192 +1,120 @@
 #!/usr/bin/env python
-# ========================================================================
-# Quick-Start: Backtesting & Evaluation
-# ========================================================================
-"""
-Run this script to evaluate your trained model against the test dataset.
 
-Usage:
-    python run_backtest.py [--checkpoint PATH] [--output-dir DIR] [--quick]
+from __future__ import annotations
 
-Examples:
-    # Full backtesting with default settings
-    python run_backtest.py
-    
-    # Quick evaluation (fewer samples, fewer diffusion steps)
-    python run_backtest.py --quick
-    
-    # Use specific checkpoint
-    python run_backtest.py --checkpoint models/checkpoints/model_epoch50.pt
-"""
-
+import argparse
 import os
 import sys
-import argparse
 from pathlib import Path
 
-# Add parent directory and models to path
-sys.path.insert(0, str(Path(__file__).parent.parent))
-sys.path.insert(0, str(Path(__file__).parent.parent / 'models'))
-
 import torch
-from models.diffusion import TimeCondUNet, RadioMapDataset
-from backtest.backtest_evaluation import (
+
+PROJECT_ROOT = Path(__file__).resolve().parent.parent
+if str(PROJECT_ROOT) not in sys.path:
+    sys.path.insert(0, str(PROJECT_ROOT))
+
+from backtest.backtest_evaluation import (  # noqa: E402
     backtest_on_dataset,
+    load_trained_model,
     plot_evaluation_results,
-    print_evaluation_report
+    print_evaluation_report,
 )
+from common.pathloss import (
+    DEFAULT_STATS_FILENAME,
+    PathLossStats,
+    load_stats,
+    validate_stats,
+)  # noqa: E402
+from models.diffusion import RadioMapDataset  # noqa: E402
 
 
-def main():
+def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
-        description='Run backtesting & evaluation on trained model'
+        description="Run backtesting for the path-loss diffusion model"
     )
     parser.add_argument(
-        '--checkpoint',
-        default='../models/checkpoints/model_final.pt',
-        help='Path to model checkpoint relative to project root (default: models/checkpoints/model_final.pt)'
+        "--checkpoint",
+        default="../models/checkpoints/model_final.pt",
+        help="Path to checkpoint",
     )
     parser.add_argument(
-        '--input-dir',
-        default='../model_input/data/training/input',
-        help='Path to input tensors relative to project root'
+        "--input-dir",
+        default="../model_input/data/training/input",
+        help="Input tensor directory",
     )
     parser.add_argument(
-        '--target-dir',
-        default='../model_input/data/training/target',
-        help='Path to target tensors relative to project root'
+        "--target-dir",
+        default="../model_input/data/training/target",
+        help="Target tensor directory",
     )
     parser.add_argument(
-        '--output-dir',
-        default='backtest_results',
-        help='Directory to save results'
+        "--stats-file",
+        default=f"../model_input/data/training/{DEFAULT_STATS_FILENAME}",
+        help="Normalization statistics JSON file",
     )
     parser.add_argument(
-        '--batch-size',
-        type=int,
-        default=2,
-        help='Batch size for inference'
+        "--output-dir",
+        default="backtest_results",
+        help="Directory for metrics and plots",
     )
     parser.add_argument(
-        '--samples-per-scene',
-        type=int,
-        default=5,
-        help='Number of diffusion samples per scene for ensemble'
+        "--batch-size", type=int, default=2, help="Inference batch size"
     )
     parser.add_argument(
-        '--diffusion-steps',
-        type=int,
-        default=50,
-        help='Number of reverse diffusion steps'
+        "--samples-per-scene", type=int, default=5, help="Ensemble samples per scene"
     )
     parser.add_argument(
-        '--quick',
-        action='store_true',
-        help='Quick evaluation (3 samples, 20 steps, batch_size=1)'
+        "--diffusion-steps", type=int, default=50, help="Reverse diffusion steps"
     )
     parser.add_argument(
-        '--gpu',
-        type=int,
-        default=0,
-        help='GPU device ID (default: 0)'
+        "--quick",
+        action="store_true",
+        help="Use fewer samples and fewer diffusion steps",
     )
-    
-    args = parser.parse_args()
-    
-    # Quick mode overrides
+    parser.add_argument("--gpu", type=int, default=0, help="GPU index")
+    return parser.parse_args()
+
+
+def main() -> None:
+    args = parse_args()
     if args.quick:
         args.samples_per_scene = 3
         args.diffusion_steps = 20
         args.batch_size = 1
         print("[Quick Mode] samples_per_scene=3, diffusion_steps=20, batch_size=1")
-    
-    # Device setup
-    device = f'cuda:{args.gpu}' if torch.cuda.is_available() else 'cpu'
+
+    device = f"cuda:{args.gpu}" if torch.cuda.is_available() else "cpu"
     print(f"Using device: {device}")
-    
-    # Check checkpoint exists
+
     if not os.path.exists(args.checkpoint):
-        print(f"ERROR: Checkpoint not found: {args.checkpoint}")
-        print(f"Expected location: {os.path.abspath(args.checkpoint)}")
-        sys.exit(1)
-    
-    # Load checkpoint
-    print(f"Loading checkpoint: {args.checkpoint}")
-    checkpoint = torch.load(args.checkpoint, map_location=device)
-    
-    # Detect input channels from checkpoint
-    try:
-        state_dict = checkpoint['model_state_dict'] if isinstance(checkpoint, dict) and 'model_state_dict' in checkpoint else checkpoint
-        # Shape is [out_channels, in_channels, kH, kW]
-        in_channels = state_dict['cond_proj.0.weight'].shape[1]
-        print(f"Detected model expecting {in_channels} input channels.")
-    except Exception as e:
-        print(f"Warning: Could not detect channel count from checkpoint ({e}), defaulting to 2.")
-        in_channels = 2
+        raise FileNotFoundError(f"Checkpoint not found: {args.checkpoint}")
 
-    # Create model
-    print("Initializing model...")
-    model_config = {
-        'in_ch': 1,
-        'cond_channels': in_channels,
-        'base_ch': 32,
-        'channel_mults': (1, 2, 4),
-        'num_res_blocks': 2,
-        'time_emb_dim': 128,
-        'cond_emb_dim': 64
-    }
-    model = TimeCondUNet(**model_config)
-    
-    # Load state dict
-    if isinstance(checkpoint, dict) and 'model_state_dict' in checkpoint:
-        model.load_state_dict(checkpoint['model_state_dict'])
+    model, payload = load_trained_model(args.checkpoint, device=device)
+    if payload.get("normalization_stats") is not None:
+        stats = PathLossStats.from_dict(payload["normalization_stats"])
     else:
-        model.load_state_dict(checkpoint)
-    
-    model.to(device)
-    
-    # Load dataset
-    print(f"Loading dataset...")
+        stats = load_stats(Path(args.stats_file))
+    validate_stats(stats)
+
     dataset = RadioMapDataset(args.input_dir, args.target_dir)
-    print(f"✓ Loaded {len(dataset)} samples")
-    
+    print(f"Loaded {len(dataset)} samples")
     if len(dataset) == 0:
-        print("ERROR: Dataset is empty!")
-        sys.exit(1)
-    
-    # Run backtesting
-    print("\nStarting backtesting...")
-    print(f"  Batch size: {args.batch_size}")
-    print(f"  Samples per scene: {args.samples_per_scene}")
-    print(f"  Diffusion steps: {args.diffusion_steps}")
-    print()
-    
-    try:
-        metrics, aggregate = backtest_on_dataset(
-            model=model,
-            dataset=dataset,
-            device=device,
-            num_samples_per_scene=args.samples_per_scene,
-            diffusion_steps=args.diffusion_steps,
-            batch_size=args.batch_size,
-            output_dir=args.output_dir
-        )
-        
-        # Generate visualizations
-        print("\nGenerating visualizations...")
-        plot_evaluation_results(metrics, aggregate, args.output_dir)
-        
-        # Print report
-        print_evaluation_report(metrics, aggregate)
-        
-        print(f"✓ Results saved to: {os.path.abspath(args.output_dir)}")
-        
-    except Exception as e:
-        print(f"ERROR: {e}")
-        import traceback
-        traceback.print_exc()
-        sys.exit(1)
+        raise ValueError("Dataset is empty")
+
+    metrics, aggregate = backtest_on_dataset(
+        model=model,
+        dataset=dataset,
+        stats=stats,
+        device=device,
+        num_samples_per_scene=args.samples_per_scene,
+        diffusion_steps=args.diffusion_steps,
+        batch_size=args.batch_size,
+        output_dir=args.output_dir,
+    )
+    plot_evaluation_results(metrics, aggregate, args.output_dir)
+    print_evaluation_report(metrics, aggregate)
+    print(f"Results saved to: {os.path.abspath(args.output_dir)}")
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     main()

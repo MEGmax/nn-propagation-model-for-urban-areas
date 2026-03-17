@@ -1,188 +1,257 @@
-# multi channel tensor input for nn model
-import os
-import sys
-from tracemalloc import start
-from matplotlib import pyplot as plt
-import torch
-# we want to have a function that takes in the path to the scene directory and returns the multi channel tensor input for the nn model
-import numpy as np
-from pathlib import Path
+from __future__ import annotations
+
+import argparse
 import json
+import sys
+from pathlib import Path
+
+import numpy as np
 from skimage.transform import resize
-import sionna.rt as rt
-from math import tanh
 
-#normalization constant for elevation, use config file after
-H_MAX = 8.0
-Frequency_max = 5.3e9
+PROJECT_ROOT = Path(__file__).resolve().parent.parent
+if str(PROJECT_ROOT) not in sys.path:
+    sys.path.insert(0, str(PROJECT_ROOT))
 
-def data_repo_setup(PARENT_DIR, OUTPUT_DIR_INPUT, OUTPUT_DIR_TARGET):
-    if str(PARENT_DIR / "scene_generation") not in sys.path:
-        sys.path.append(str(PARENT_DIR / "scene_generation"))
-    from studio_setup import repository_setup
+from common.pathloss import (  # noqa: E402
+    DEFAULT_STATS_FILENAME,
+    coerce_scalar,
+    denormalize_path_loss,
+    load_stats,
+    make_stats,
+    normalize_electrical_distance,
+    normalize_elevation,
+    normalize_path_loss,
+    save_stats,
+    validate_stats,
+)
 
-    repository_setup(OUTPUT_DIR_INPUT)
-    repository_setup(OUTPUT_DIR_TARGET)
 
-#creates a directory called data split into training, validation and testing that stores input and target tensors used as input for the nn model
-def createDataTensorsFromScenes(scenes_root: Path, output_dir_input: Path, output_dir_target: Path):
-    scene_dirs = [d for d in scenes_root.iterdir() if d.is_dir()]
-    # os.makedirs(output_dir_input, exist_ok=True)
-    # os.makedirs(output_dir_target, exist_ok=True)
-    for scene_dir in scene_dirs:
-        input_tensor, target_tensor = scene_to_tensor_simple(scene_dir)
-        scene_name = scene_dir.name
-        np.save(output_dir_input / f"{scene_name}_input.npy", input_tensor)
-        np.save(output_dir_target / f"{scene_name}_target.npy", target_tensor)
-    print(f"Saved tensors for {len(scene_dirs)} scenes to {output_dir_input} and {output_dir_target}")
+DEFAULT_CELL_SIZE_M = (0.15, 0.15)
+DEFAULT_MAP_CENTER_M = (0.0, 0.0)
 
-def scene_to_tensor_simple(scene_dir: str, freq_log_scale=True):
-    """
-    Converts a scene folder into an ML-ready input tensor and RSS target tensor.
 
-    Parameters
-    ----------
-    scene_dir : str or Path
-        Path to a scene folder containing:
-        - elevation.npy
-        - pathloss_values*.npy
-        - tx_metadata.json
-    distance_normalize : bool
-        Whether to normalize the distance map to 0-1 (optional)
-    freq_log_scale : bool
-        Whether to use log10(frequency in GHz) for the frequency channel
+def load_scene_payload(scene_dir: Path) -> dict:
+    elevation_files = sorted(scene_dir.glob("elevation*.npy"))
+    pathloss_files = sorted(scene_dir.glob("pathloss_values*.npy"))
+    metadata_file = scene_dir / "tx_metadata.json"
 
-    Returns
-    -------
-    input_tensor : np.ndarray
-        elevation_rs.astype(np.float32),
-        distance_map.astype(np.float32),
-        H x W x 2 tensor:
-        [elevation, distance, frequency]
-    target_tensor : np.ndarray
-        H x W RSS map
-    """
-    scene_path = Path(scene_dir)
-
-    # Load elevation
-    elevation_files = list(scene_path.glob("elevation*.npy"))
     if not elevation_files:
-        raise RuntimeError(f"No elevation.npy found in {scene_dir}")
-    elevation = np.load(elevation_files[0])  # H x W 
-
-    """
-    rss_files = list(scene_path.glob("rss_values*.npy"))
-    if not rss_files:
-        raise RuntimeError(f"No rss_values*.npy found in {scene_dir}")
-    rss = np.load(rss_files[0])  # H x W
-    """
-    pathloss_files = list(scene_path.glob("pathloss_values*.npy"))
+        raise FileNotFoundError(f"No elevation map found in {scene_dir}")
     if not pathloss_files:
-        raise RuntimeError(f"No pathloss_values*.npy found in {scene_dir}")
-    pathloss = np.load(pathloss_files[0])  # H x W
+        raise FileNotFoundError(f"No pathloss map found in {scene_dir}")
+    if not metadata_file.exists():
+        raise FileNotFoundError(f"No tx_metadata.json found in {scene_dir}")
 
-    # Resize elevation map to shape of RSS map if needed
-    H, W = pathloss.shape[0], pathloss.shape[1]
-    print(f"Original elevation shape: {elevation.shape}, RSS shape: {pathloss.shape}")
-    elevation_rs = resize(
-        elevation,
-        (H, W),
-        order=0,                # nearest neighbor
+    elevation = np.load(elevation_files[0]).astype(np.float32)
+    pathloss_db = np.load(pathloss_files[0]).astype(np.float32)
+    if pathloss_db.ndim == 3:
+        pathloss_db = np.squeeze(pathloss_db)
+
+    with metadata_file.open("r", encoding="utf-8") as handle:
+        metadata = json.load(handle)
+
+    tx_position = np.asarray(metadata["tx_position"], dtype=np.float32).reshape(-1)
+    if tx_position.size < 2:
+        raise ValueError(f"tx_position must contain x and y coordinates in {metadata_file}")
+
+    radio_map = metadata.get("radio_map", {})
+    cell_size = tuple(radio_map.get("cell_size", DEFAULT_CELL_SIZE_M))
+    map_center = tuple(radio_map.get("center", DEFAULT_MAP_CENTER_M))
+
+    return {
+        "scene_name": scene_dir.name,
+        "elevation_m": elevation,
+        "pathloss_db": pathloss_db,
+        "tx_position_m": tx_position[:2],
+        "frequency_hz": coerce_scalar(metadata["frequency"]),
+        "cell_size_m": (float(cell_size[0]), float(cell_size[1])),
+        "map_center_m": (float(map_center[0]), float(map_center[1])),
+    }
+
+
+def resize_elevation(elevation_m: np.ndarray, target_shape: tuple[int, int]) -> np.ndarray:
+    return resize(
+        elevation_m,
+        target_shape,
+        order=0,
         preserve_range=True,
-        anti_aliasing=False
+        anti_aliasing=False,
     ).astype(np.float32)
 
-    # Normalize elevation to 0-1
-    #elevation_norm = np.tanh(elevation_rs / H_MAX)  # simple normalization, can be tuned
-    elevation_norm = elevation_rs / H_MAX
-    elevation_norm = elevation_norm * 2 - 1
-    # Print range of normalized elevation for debugging
-    #print(f"Elevation range after normalization: min={elevation_norm.min()}, max={elevation_norm.max()}")
 
-    # Load TX metadata
-    metadata_file = scene_path / "tx_metadata.json"
-    if not metadata_file.exists():
-        raise RuntimeError(f"No tx_metadata.json found in {scene_dir}")
-    with open(metadata_file, "r") as f:
-        tx_meta = json.load(f)
+def compute_electrical_distance_map(
+    height: int,
+    width: int,
+    tx_position_m: np.ndarray,
+    cell_size_m: tuple[float, float],
+    map_center_m: tuple[float, float],
+    frequency_hz: float,
+) -> np.ndarray:
+    dx_m, dy_m = cell_size_m
+    center_x_m, center_y_m = map_center_m
 
-    # Retrieve TX position and frequency
-    tx_pos = np.array(tx_meta["tx_position"])  # [x, y, z]
-    frequency_hz = tx_meta["frequency"]
+    x_coords = center_x_m + (np.arange(width, dtype=np.float32) - (width - 1) / 2.0) * dx_m
+    y_coords = center_y_m + (np.arange(height, dtype=np.float32) - (height - 1) / 2.0) * dy_m
+    xx_m, yy_m = np.meshgrid(x_coords, y_coords)
 
-    # Distance map (XY plane)
-    xx, yy = np.meshgrid(np.arange(W), np.arange(H))
+    metric_distance = np.sqrt((xx_m - tx_position_m[0]) ** 2 + (yy_m - tx_position_m[1]) ** 2)
+    wavelength_m = 3e8 / frequency_hz
+    return (metric_distance / wavelength_m).astype(np.float32)
 
-    # Shift origin to center: tx position is written relative to center, so we need to shift the grid as well
-    xx_centered = xx - W / 2
-    yy_centered = yy - H / 2
 
-    # Assuming tx_pos[0], tx_pos[1] are also relative to center
-    distance_map = np.sqrt((xx_centered - tx_pos[0])**2 + (yy_centered - tx_pos[1])**2)
+def collect_stats(scene_payloads: list[dict]) -> object:
+    if not scene_payloads:
+        raise ValueError("No scenes found to preprocess")
 
-    # Convert frequency → wavelength and encode distance in wavelengths
-    c = 3e8
-    wavelength = c / frequency_hz
-    distance_wavelengths = distance_map / wavelength
-    MAX_DISTANCE_WAVELENGTHS = 353.0
-    distance_norm = distance_wavelengths / MAX_DISTANCE_WAVELENGTHS
-    distance_norm = np.clip(distance_norm, 0, 1)
-    distance_norm = distance_norm * 2 - 1
+    frequency_hz = scene_payloads[0]["frequency_hz"]
+    total_pixels = 0
+    pathloss_sum = 0.0
+    pathloss_sq_sum = 0.0
+    max_elevation_m = 0.0
+    max_electrical_distance = 0.0
 
-    # Stack input channels: elevation, distance, frequency
-    input_tensor = np.stack([
-        elevation_norm.astype(np.float32),
-        distance_norm.astype(np.float32)
-    ], axis=-1)
+    for payload in scene_payloads:
+        if not np.isclose(payload["frequency_hz"], frequency_hz):
+            raise ValueError(
+                "Frequency varies across scenes. Fixed frequency is required when frequency is not a model input."
+            )
 
-    # Target tensor: RSS
-    # Convert rss from dB to dBm
-    # pathloss = 10 * np.log10(pathloss) + 30
-    mean_global =  95.39616 # computed across all scenes
-    std_global = 300.0    # computed across all scenes
+        pathloss_db = payload["pathloss_db"]
+        elevation_rs = resize_elevation(payload["elevation_m"], pathloss_db.shape)
+        electrical_distance = compute_electrical_distance_map(
+            height=pathloss_db.shape[0],
+            width=pathloss_db.shape[1],
+            tx_position_m=payload["tx_position_m"],
+            cell_size_m=payload["cell_size_m"],
+            map_center_m=payload["map_center_m"],
+            frequency_hz=payload["frequency_hz"],
+        )
 
-    # simple mean-zero normalization
-    #normalized_pathloss = (pathloss - mean_global) / std_global
-    #normalized_pathloss = np.tanh(normalized_pathloss)
-    # for denormalization: pathloss_recovered = normalized_map_tanh * std_global + mean_global
+        total_pixels += pathloss_db.size
+        pathloss_sum += float(pathloss_db.sum())
+        pathloss_sq_sum += float(np.square(pathloss_db).sum())
+        max_elevation_m = max(max_elevation_m, float(elevation_rs.max()))
+        max_electrical_distance = max(max_electrical_distance, float(electrical_distance.max()))
 
-    #linar normalization 
-    PATHLOSS_MIN = 0.0
-    PATHLOSS_MAX = 200.0
+    mean_db = pathloss_sum / total_pixels
+    variance = max(pathloss_sq_sum / total_pixels - mean_db**2, 1e-8)
+    std_db = variance**0.5
 
-    normalized_pathloss = (pathloss - PATHLOSS_MIN) / (PATHLOSS_MAX - PATHLOSS_MIN)
-    normalized_pathloss = normalized_pathloss * 2.0 - 1.0   # scale to [-1,1]
+    return make_stats(
+        frequency_hz=frequency_hz,
+        path_loss_mean_db=mean_db,
+        path_loss_std_db=std_db,
+        max_elevation_m=max_elevation_m,
+        max_electrical_distance=max_electrical_distance,
+    )
 
-    target_tensor = normalized_pathloss.astype(np.float32)
 
-    # Permute target tensor to H x W X C
-    if target_tensor.ndim == 2:
-        target_tensor = np.expand_dims(target_tensor, axis=0)  # C x H x W
-    target_tensor = np.transpose(target_tensor, (1, 2, 0))  # H x W x C
-    print(f"Input tensor shape: {input_tensor.shape}, Target tensor shape: {target_tensor.shape}")
+def build_scene_tensors(payload: dict, stats) -> tuple[np.ndarray, np.ndarray]:
+    pathloss_db = payload["pathloss_db"]
+    height, width = pathloss_db.shape
+
+    elevation_rs = resize_elevation(payload["elevation_m"], (height, width))
+    electrical_distance = compute_electrical_distance_map(
+        height=height,
+        width=width,
+        tx_position_m=payload["tx_position_m"],
+        cell_size_m=payload["cell_size_m"],
+        map_center_m=payload["map_center_m"],
+        frequency_hz=payload["frequency_hz"],
+    )
+
+    input_tensor = np.stack(
+        [
+            normalize_elevation(elevation_rs, stats),
+            normalize_electrical_distance(electrical_distance, stats),
+        ],
+        axis=-1,
+    ).astype(np.float32)
+
+    target_tensor = normalize_path_loss(pathloss_db, stats)[..., np.newaxis].astype(np.float32)
     return input_tensor, target_tensor
 
 
-# Create automation here to convert all scenes in a root directory
-PARENT_DIR = Path(__file__).resolve().parent.parent
-SCENES_ROOT = Path(PARENT_DIR / "scene_generation/automated_scenes").resolve()
-print(SCENES_ROOT.exists())  # Should print True
+def preprocess_scenes(
+    scenes_root: Path,
+    output_input_dir: Path,
+    output_target_dir: Path,
+    stats_path: Path,
+) -> int:
+    scene_dirs = sorted([path for path in scenes_root.iterdir() if path.is_dir()])
+    scene_payloads = [load_scene_payload(scene_dir) for scene_dir in scene_dirs]
+    stats = collect_stats(scene_payloads)
+    save_stats(stats, stats_path)
 
-# Choose dataset split: "training", "testing", or "validation"
-DATASET_SPLIT = "training"
+    output_input_dir.mkdir(parents=True, exist_ok=True)
+    output_target_dir.mkdir(parents=True, exist_ok=True)
 
-if DATASET_SPLIT == "training":
-    OUTPUT_DIR_INPUT = PARENT_DIR / "model_input/data/training/input"
-    OUTPUT_DIR_TARGET = PARENT_DIR / "model_input/data/training/target"
-elif DATASET_SPLIT == "testing":
-    OUTPUT_DIR_INPUT = PARENT_DIR / "model_input/data/testing/input"
-    OUTPUT_DIR_TARGET = PARENT_DIR / "model_input/data/testing/target"
-elif DATASET_SPLIT == "validation":
-    OUTPUT_DIR_INPUT = PARENT_DIR / "model_input/data/validation/input"
-    OUTPUT_DIR_TARGET = PARENT_DIR / "model_input/data/validation/target"
-else:
-    raise ValueError(f"Invalid DATASET_SPLIT: {DATASET_SPLIT}. Must be 'training', 'testing', or 'validation'")
+    for payload in scene_payloads:
+        input_tensor, target_tensor = build_scene_tensors(payload, stats)
+        scene_name = payload["scene_name"]
+        np.save(output_input_dir / f"{scene_name}_input.npy", input_tensor)
+        np.save(output_target_dir / f"{scene_name}_target.npy", target_tensor)
 
-data_repo_setup(PARENT_DIR, OUTPUT_DIR_INPUT, OUTPUT_DIR_TARGET)
-createDataTensorsFromScenes(SCENES_ROOT, OUTPUT_DIR_INPUT, OUTPUT_DIR_TARGET)
-print(f"Created data tensors in {OUTPUT_DIR_INPUT} and {OUTPUT_DIR_TARGET}")    
+    return len(scene_payloads)
+
+
+def parse_args() -> argparse.Namespace:
+    parser = argparse.ArgumentParser(
+        description="Build normalized path-loss tensors with elevation and electrical-distance conditioning."
+    )
+    parser.add_argument(
+        "--scenes-root",
+        type=Path,
+        default=PROJECT_ROOT / "scene_generation" / "automated_scenes",
+        help="Directory containing generated scene folders.",
+    )
+    parser.add_argument(
+        "--output-input",
+        type=Path,
+        default=PROJECT_ROOT / "model_input" / "data" / "training" / "input",
+        help="Output directory for input tensors.",
+    )
+    parser.add_argument(
+        "--output-target",
+        type=Path,
+        default=PROJECT_ROOT / "model_input" / "data" / "training" / "target",
+        help="Output directory for target tensors.",
+    )
+    parser.add_argument(
+        "--stats-file",
+        type=Path,
+        default=PROJECT_ROOT / "model_input" / "data" / "training" / DEFAULT_STATS_FILENAME,
+        help="Output JSON file for shared normalization statistics.",
+    )
+    return parser.parse_args()
+
+
+def main() -> None:
+    args = parse_args()
+
+    if not args.scenes_root.exists():
+        raise FileNotFoundError(f"Scenes root not found: {args.scenes_root}")
+
+    count = preprocess_scenes(
+        scenes_root=args.scenes_root,
+        output_input_dir=args.output_input,
+        output_target_dir=args.output_target,
+        stats_path=args.stats_file,
+    )
+    stats = load_stats(args.stats_file)
+    validate_stats(stats)
+
+    print(f"created_pairs={count}")
+    print(f"input_dir={args.output_input}")
+    print(f"target_dir={args.output_target}")
+    print(f"stats_file={args.stats_file}")
+    print(
+        "normalization="
+        f"path_loss(mean={stats.path_loss_mean_db:.6f},std={stats.path_loss_std_db:.6f}),"
+        f" elevation(max={stats.max_elevation_m:.6f}),"
+        f" electrical_distance(max={stats.max_electrical_distance:.6f})"
+    )
+
+
+if __name__ == "__main__":
+    main()
