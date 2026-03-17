@@ -14,6 +14,8 @@ except ModuleNotFoundError:  # pragma: no cover
     import tomli as tomllib
 
 
+
+
 BASE_DIR = Path(__file__).resolve().parent
 PROJECT_ROOT = BASE_DIR.parent
 SCENE_DIR = BASE_DIR / "automated_scenes"
@@ -62,15 +64,14 @@ def render_scene(scene_dir: Path, frequency_hz: float) -> None:
     print(f"Set frequency to {_to_scalar(scene.frequency)} Hz")
 
     scene.tx_array = PlanarArray(
-        num_rows=4,
-        num_cols=4,
-        vertical_spacing=0.5,
-        horizontal_spacing=0.5,
-        pattern="tr38901",
+        num_rows=1,
+        num_cols=1,
+        pattern="iso",
         polarization="V",
     )
 
-    tx = Transmitter("tx", [0, 0, 1.5], [0.0, 0.0, 0.0])
+    # place transmitter at origin
+    tx = Transmitter("tx", [0, 0, 3.0], [0.0, 0.0, 0.0])
     scene.add(tx)
 
     camera = Camera(position=[0, 0, 30], look_at=tx.position)

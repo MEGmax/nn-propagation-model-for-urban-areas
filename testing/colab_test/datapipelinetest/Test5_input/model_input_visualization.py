@@ -33,9 +33,10 @@ plt.colorbar(label="Distance (normalized)")
 plt.show()
 
 # Visualize target tensor (RSS map)
-rss_map = target_tensor[:, :, 0]  # Assuming target is H x W x
+pathloss = target_tensor[:, :, 0]  # Assuming target is H x W x
+print(f"Target tensor shape: {target_tensor.shape}, min: {target_tensor.min()}, max: {target_tensor.max()}")
 plt.figure(figsize=(6, 5))
-plt.imshow(rss_map, cmap='inferno')
+plt.imshow(pathloss, cmap='inferno')
 plt.title("Target Pathloss Map")
 plt.colorbar(label="Pathloss (dB)")
 plt.show()
