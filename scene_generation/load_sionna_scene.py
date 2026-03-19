@@ -111,11 +111,23 @@ def render_scene(scene_dir: Path, frequency_hz: float) -> None:
     path_gain_linear = _to_numpy(radio_map.path_gain)
     path_gain_safe = np.clip(path_gain_linear, 1e-30, None)
     path_loss_db = -10.0 * np.log10(path_gain_safe)
+    path_loss_db = np.clip(path_loss_db, 0.0, 200.0)
     np.save(scene_dir / f"pathloss_values_{scene_name}.npy", path_loss_db.astype(np.float32))
 
-    image = scene.render(camera=camera, radio_map=radio_map)
-    image.savefig(str(scene_dir / f"pathloss_render_{scene_name}.png"))
-    plt.close(image)
+    #image = scene.render(camera=camera, radio_map=radio_map)
+    #image.savefig(str(scene_dir / f"pathloss_render_{scene_name}.png"))
+    #plt.close(image)
+
+    # additionally save plot of pathloss values
+    plt.figure()
+    plt.imshow(path_loss_db.squeeze(), cmap='viridis')
+    plt.colorbar()
+    plt.title(f"Path Loss for {scene_name}")
+    plt.xlabel("X (m)")
+    plt.ylabel("Y (m)")
+    plt.savefig(scene_dir / f"pathloss_plot_{scene_name}.png")
+    plt.close()
+
     print(f"Finished {scene_name}")
 
 
