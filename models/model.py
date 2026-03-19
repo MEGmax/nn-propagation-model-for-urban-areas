@@ -80,10 +80,10 @@ def main() -> None:
     model = TimeCondUNet(
         noisy_channels=1,
         cond_channels=cond_channels,
-        base_ch=32,
-        channel_mults=(1, 2, 4),
+        base_ch=64,
+        channel_mults=(1, 2, 4, 8),
         num_res_blocks=2,
-        time_emb_dim=128,
+        time_emb_dim=256,
         out_ch=1,
     )
     model.to(device)
