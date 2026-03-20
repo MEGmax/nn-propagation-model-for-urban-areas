@@ -116,6 +116,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--output-dir", default="../pathloss_visualizations", help="Directory for outputs")
     parser.add_argument("--output-name", default="prediction", help="Base name for output files")
     parser.add_argument("--sampling-steps", type=int, default=50, help="Reverse diffusion steps")
+    parser.add_argument("--timesteps", type=int, default=None, help="Override diffusion timesteps from checkpoint")
     parser.add_argument("--vmin", type=float, default=None, help="Minimum plot value")
     parser.add_argument("--vmax", type=float, default=None, help="Maximum plot value")
     parser.add_argument("--device", type=str, default=None, help="cuda or cpu")
@@ -134,6 +135,7 @@ def main() -> None:
 
     model, payload = load_model(args.checkpoint, device=device)
     stats_payload = payload.get("normalization_stats")
+    training_config = payload.get("training_config") or {}
 
     if args.stats_file is not None:
         stats = load_stats(Path(args.stats_file))
@@ -151,12 +153,14 @@ def main() -> None:
         raise ValueError(f"Expected input shape (H, W, {expected_channels}), got {cond_input.shape}")
 
     os.makedirs(args.output_dir, exist_ok=True)
+    timesteps = args.timesteps or int(training_config.get("timesteps", 1000))
     path_loss_prediction = run_inference(
         model=model,
         cond_input=cond_input,
         stats=stats,
         device=device,
         sampling_steps=args.sampling_steps,
+        timesteps=timesteps,
     )
 
     npy_path = os.path.join(args.output_dir, f"{args.output_name}.npy")
@@ -167,6 +171,8 @@ def main() -> None:
     print("\n" + "=" * 60)
     print("INFERENCE COMPLETE")
     print("=" * 60)
+    print(f"Timesteps: {timesteps}")
+    print(f"Sampling steps: {args.sampling_steps}")
     print(f"Path-loss tensor: {npy_path}")
     print(f"Path-loss visualization: {png_path}")
     print("=" * 60)

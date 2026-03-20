@@ -18,15 +18,26 @@ class PathLossStats:
     path_loss_std_db: float
     max_elevation_m: float
     max_electrical_distance: float
+    elevation_mean_m: float | None = None
+    elevation_std_m: float | None = None
+    electrical_distance_mean: float | None = None
+    electrical_distance_std: float | None = None
 
     def to_dict(self) -> dict[str, float]:
-        return {
+        payload: dict[str, float] = {
             "frequency_hz": float(self.frequency_hz),
             "path_loss_mean_db": float(self.path_loss_mean_db),
             "path_loss_std_db": float(self.path_loss_std_db),
             "max_elevation_m": float(self.max_elevation_m),
             "max_electrical_distance": float(self.max_electrical_distance),
         }
+        if self.elevation_mean_m is not None and self.elevation_std_m is not None:
+            payload["elevation_mean_m"] = float(self.elevation_mean_m)
+            payload["elevation_std_m"] = float(self.elevation_std_m)
+        if self.electrical_distance_mean is not None and self.electrical_distance_std is not None:
+            payload["electrical_distance_mean"] = float(self.electrical_distance_mean)
+            payload["electrical_distance_std"] = float(self.electrical_distance_std)
+        return payload
 
     @classmethod
     def from_dict(cls, payload: dict[str, Any]) -> "PathLossStats":
@@ -47,6 +58,22 @@ class PathLossStats:
             path_loss_std_db=float(payload["path_loss_std_db"]),
             max_elevation_m=float(payload["max_elevation_m"]),
             max_electrical_distance=float(payload["max_electrical_distance"]),
+            elevation_mean_m=(
+                float(payload["elevation_mean_m"]) if payload.get("elevation_mean_m") is not None else None
+            ),
+            elevation_std_m=(
+                float(payload["elevation_std_m"]) if payload.get("elevation_std_m") is not None else None
+            ),
+            electrical_distance_mean=(
+                float(payload["electrical_distance_mean"])
+                if payload.get("electrical_distance_mean") is not None
+                else None
+            ),
+            electrical_distance_std=(
+                float(payload["electrical_distance_std"])
+                if payload.get("electrical_distance_std") is not None
+                else None
+            ),
         )
 
 
@@ -64,6 +91,10 @@ def make_stats(
     path_loss_std_db: float,
     max_elevation_m: float,
     max_electrical_distance: float,
+    elevation_mean_m: float | None = None,
+    elevation_std_m: float | None = None,
+    electrical_distance_mean: float | None = None,
+    electrical_distance_std: float | None = None,
 ) -> PathLossStats:
     stats = PathLossStats(
         frequency_hz=float(frequency_hz),
@@ -71,6 +102,14 @@ def make_stats(
         path_loss_std_db=float(path_loss_std_db),
         max_elevation_m=float(max_elevation_m),
         max_electrical_distance=float(max_electrical_distance),
+        elevation_mean_m=float(elevation_mean_m) if elevation_mean_m is not None else None,
+        elevation_std_m=float(elevation_std_m) if elevation_std_m is not None else None,
+        electrical_distance_mean=(
+            float(electrical_distance_mean) if electrical_distance_mean is not None else None
+        ),
+        electrical_distance_std=(
+            float(electrical_distance_std) if electrical_distance_std is not None else None
+        ),
     )
     validate_stats(stats)
     return stats
@@ -106,6 +145,16 @@ def validate_stats(stats: PathLossStats) -> None:
         raise ValueError("max_elevation_m must be positive")
     if stats.max_electrical_distance <= 0.0:
         raise ValueError("max_electrical_distance must be positive")
+    if (stats.elevation_mean_m is None) != (stats.elevation_std_m is None):
+        raise ValueError("elevation_mean_m and elevation_std_m must both be provided when using affine elevation normalization")
+    if (stats.electrical_distance_mean is None) != (stats.electrical_distance_std is None):
+        raise ValueError(
+            "electrical_distance_mean and electrical_distance_std must both be provided when using affine electrical-distance normalization"
+        )
+    if stats.elevation_std_m is not None and stats.elevation_std_m <= 0.0:
+        raise ValueError("elevation_std_m must be positive")
+    if stats.electrical_distance_std is not None and stats.electrical_distance_std <= 0.0:
+        raise ValueError("electrical_distance_std must be positive")
 
 
 def normalize_path_loss(path_loss_db: Any, stats: PathLossStats) -> np.ndarray:
@@ -123,10 +172,16 @@ def denormalize_path_loss(normalized_path_loss: Any, stats: PathLossStats) -> np
 def normalize_elevation(elevation_m: Any, stats: PathLossStats) -> np.ndarray:
     validate_stats(stats)
     elevation_m = np.asarray(elevation_m, dtype=np.float32)
+    if stats.elevation_mean_m is not None and stats.elevation_std_m is not None:
+        return ((elevation_m - stats.elevation_mean_m) / stats.elevation_std_m).astype(np.float32)
     return (elevation_m / stats.max_elevation_m).astype(np.float32)
 
 
 def normalize_electrical_distance(electrical_distance: Any, stats: PathLossStats) -> np.ndarray:
     validate_stats(stats)
     electrical_distance = np.asarray(electrical_distance, dtype=np.float32)
+    if stats.electrical_distance_mean is not None and stats.electrical_distance_std is not None:
+        return (
+            (electrical_distance - stats.electrical_distance_mean) / stats.electrical_distance_std
+        ).astype(np.float32)
     return (electrical_distance / stats.max_electrical_distance).astype(np.float32)
