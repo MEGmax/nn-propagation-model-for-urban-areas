@@ -1,0 +1,18 @@
+$ /Users/ahmethamamcioglu/Desktop/code/nn-propagation-model-for-urban-areas/.venv-1/bin/python visualize/visualize_rss_maps.py --checkpoint /Users/ahmethamamcioglu/Desktop/code/nn-propagation-model-for-urban-areas/artifacts/training_run/checkpoints/model_final.pt --input-dir /Users/ahmethamamcioglu/Desktop/code/nn-propagation-model-for-urban-areas/model_input/data/training/input --target-dir /Users/ahmethamamcioglu/Desktop/code/nn-propagation-model-for-urban-areas/model_input/data/training/target --stats-file /Users/ahmethamamcioglu/Desktop/code/nn-propagation-model-for-urban-areas/model_input/data/training/normalization_stats.json --output-dir /Users/ahmethamamcioglu/Desktop/code/nn-propagation-model-for-urban-areas/artifacts/training_run/visuals --num-scenes 5 --diffusion-steps 100 --timesteps 100
+
+Using device: cpu
+
+================================================================================
+VISUALIZATION SUMMARY
+================================================================================
+Scene                RMSE (dB)       MAE (dB)        Bias (dB)      
+--------------------------------------------------------------------------------
+scene0               9.21            8.06            5.32           
+scene10              11.93           10.07           0.90           
+scene11              13.68           10.36           -4.24          
+scene12              12.14           9.40            1.41           
+scene13              10.95           8.24            1.77           
+--------------------------------------------------------------------------------
+Saved figures to: /Users/ahmethamamcioglu/Desktop/code/nn-propagation-model-for-urban-areas/artifacts/training_run/visuals
+
+[exit_code=0 duration_seconds=39.54]

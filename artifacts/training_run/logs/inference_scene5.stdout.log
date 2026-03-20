@@ -1,0 +1,18 @@
+$ /Users/ahmethamamcioglu/Desktop/code/nn-propagation-model-for-urban-areas/.venv-1/bin/python models/inference.py --checkpoint /Users/ahmethamamcioglu/Desktop/code/nn-propagation-model-for-urban-areas/artifacts/training_run/checkpoints/model_final.pt --input /Users/ahmethamamcioglu/Desktop/code/nn-propagation-model-for-urban-areas/model_input/data/training/input/scene5_input.npy --stats-file /Users/ahmethamamcioglu/Desktop/code/nn-propagation-model-for-urban-areas/model_input/data/training/normalization_stats.json --output-dir /Users/ahmethamamcioglu/Desktop/code/nn-propagation-model-for-urban-areas/artifacts/training_run/inference --output-name scene5_prediction_t100 --sampling-steps 100 --timesteps 100
+
+Using device: cpu
+Saved path-loss tensor to: /Users/ahmethamamcioglu/Desktop/code/nn-propagation-model-for-urban-areas/artifacts/training_run/inference/scene5_prediction_t100.npy
+Shape: (107, 107, 1)
+Value range: 56.01 to 88.47 dB
+Saved path-loss visualization to: /Users/ahmethamamcioglu/Desktop/code/nn-propagation-model-for-urban-areas/artifacts/training_run/inference/scene5_prediction_t100.png
+
+============================================================
+INFERENCE COMPLETE
+============================================================
+Timesteps: 100
+Sampling steps: 100
+Path-loss tensor: /Users/ahmethamamcioglu/Desktop/code/nn-propagation-model-for-urban-areas/artifacts/training_run/inference/scene5_prediction_t100.npy
+Path-loss visualization: /Users/ahmethamamcioglu/Desktop/code/nn-propagation-model-for-urban-areas/artifacts/training_run/inference/scene5_prediction_t100.png
+============================================================
+
+[exit_code=0 duration_seconds=9.08]

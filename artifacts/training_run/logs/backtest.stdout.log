@@ -1,0 +1,22 @@
+$ /Users/ahmethamamcioglu/Desktop/code/nn-propagation-model-for-urban-areas/.venv-1/bin/python backtest/run_backtest.py --checkpoint /Users/ahmethamamcioglu/Desktop/code/nn-propagation-model-for-urban-areas/artifacts/training_run/checkpoints/model_final.pt --input-dir /Users/ahmethamamcioglu/Desktop/code/nn-propagation-model-for-urban-areas/model_input/data/training/input --target-dir /Users/ahmethamamcioglu/Desktop/code/nn-propagation-model-for-urban-areas/model_input/data/training/target --stats-file /Users/ahmethamamcioglu/Desktop/code/nn-propagation-model-for-urban-areas/model_input/data/training/normalization_stats.json --output-dir /Users/ahmethamamcioglu/Desktop/code/nn-propagation-model-for-urban-areas/artifacts/training_run/backtest --batch-size 1 --samples-per-scene 1 --diffusion-steps 100 --timesteps 100
+
+Using device: cpu
+Loaded 20 samples
+
+================================================================================
+BACKTEST REPORT
+================================================================================
+Scenes: 20
+RMSE: 12.24 ± 1.66 dB
+MAE: 9.56 ± 0.97 dB
+Median error: 8.96 dB
+Bias: 0.05 dB
+Coverage @3 dB: 17.5%
+Coverage @5 dB: 31.4%
+Coverage @10 dB: 58.7%
+Pearson r: 0.685
+================================================================================
+
+Results saved to: /Users/ahmethamamcioglu/Desktop/code/nn-propagation-model-for-urban-areas/artifacts/training_run/backtest
+
+[exit_code=0 duration_seconds=160.76]
