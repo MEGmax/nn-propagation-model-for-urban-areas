@@ -14,6 +14,14 @@ venv
 *.ipynb_checkpoints
 
 artifacts/*
-*.pt
-*.npy
-logs/
+
+# Allow training_run folder
+!artifacts/training_run/
+
+# Ignore large checkpoint models
+artifacts/training_run/checkpoints/*.pt
+
+# Ignore numpy outputs
+artifacts/training_run/inference/*.npy
+
+# Ignore logs
