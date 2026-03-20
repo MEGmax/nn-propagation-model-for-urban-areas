@@ -10,9 +10,20 @@ from skimage.transform import resize
 import sionna.rt as rt
 from math import tanh
 
-pathloss = np.load("/Users/khushipatel/Desktop/capstone/nn-propagation-model-for-urban-areas/scene_generation/automated_scenes/scene0/pathloss_values0.npy")
-plt.figure(figsize=(6, 5))
-plt.imshow(pathloss, cmap='inferno')
-plt.title("Pathloss Map")
-plt.colorbar(label="Pathloss (dB)")
-plt.show()
+def main():
+
+    BASE_DIR = Path(__file__).resolve().parent
+    ROOT_DIR = BASE_DIR.parent.parent.parent.parent
+    TARGET_DIR = ROOT_DIR / "model_input" / "data" / "training" / "target"
+
+    for file_path in TARGET_DIR.iterdir():
+        if file_path.is_file():
+            pathloss = np.load(file_path)
+            plt.figure(figsize=(6, 5))
+            plt.imshow(pathloss, cmap='inferno')
+            plt.title("Pathloss Map")
+            plt.colorbar(label="Pathloss (dB)")
+            plt.show()
+
+if __name__ == "__main__":
+    main()
