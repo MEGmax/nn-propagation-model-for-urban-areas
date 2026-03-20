@@ -1,0 +1,11 @@
+{
+  "frequency_hz": 3500000000.0,
+  "path_loss_mean_db": 69.09204188138702,
+  "path_loss_std_db": 16.186356998661132,
+  "max_elevation_m": 7.9786376953125,
+  "max_electrical_distance": 131.16830444335938,
+  "elevation_mean_m": 1.122141933622751,
+  "elevation_std_m": 2.236195040943659,
+  "electrical_distance_mean": 71.63901869158879,
+  "electrical_distance_std": 26.666475052513984
+}
