@@ -124,9 +124,7 @@ class TimeCondUNet(nn.Module):
         for mult in reversed(channel_mults):
             out_channels = base_ch * mult
             self.ups.append(Upsample())
-            self.res_blocks_up.append(
-                ResBlock(ch + out_channels, out_channels, time_emb_dim=time_emb_dim)
-            )
+            self.res_blocks_up.append(ResBlock(ch + out_channels, out_channels, time_emb_dim=time_emb_dim))
             for _ in range(num_res_blocks - 1):
                 self.res_blocks_up.append(ResBlock(out_channels, out_channels, time_emb_dim=time_emb_dim))
             ch = out_channels
@@ -300,6 +298,7 @@ def save_checkpoint(
     epoch: int,
     loss: float,
     normalization_stats: Optional[dict] = None,
+    training_config: Optional[dict] = None,
 ) -> None:
     payload = {
         "epoch": epoch,
@@ -308,6 +307,7 @@ def save_checkpoint(
         "optimizer_state_dict": optimizer.state_dict(),
         "model_config": model.get_config(),
         "normalization_stats": normalization_stats,
+        "training_config": training_config,
     }
     torch.save(payload, path)
 
@@ -324,6 +324,7 @@ def train(
     out_dir: str = "./checkpoints",
     normalization_stats: Optional[dict] = None,
     num_workers: int = 4,
+    training_config: Optional[dict] = None,
 ):
     out_path = Path(out_dir)
     out_path.mkdir(parents=True, exist_ok=True)
@@ -365,6 +366,7 @@ def train(
                 epoch + 1,
                 avg_loss,
                 normalization_stats=normalization_stats,
+                training_config=training_config,
             )
 
     save_checkpoint(
@@ -374,6 +376,7 @@ def train(
         epochs,
         avg_loss,
         normalization_stats=normalization_stats,
+        training_config=training_config,
     )
     return model
 

@@ -87,7 +87,10 @@ class PathLossEvaluator:
 
 class DiffusionSampler:
     def __init__(
-        self, model: TimeCondUNet, device: str = "cuda", timesteps: int = 1000
+        self,
+        model: TimeCondUNet,
+        device: str = "cuda",
+        timesteps: int = 1000,
     ):
         self.model = model
         self.device = device
@@ -139,10 +142,11 @@ def backtest_on_dataset(
     diffusion_steps: int = 50,
     batch_size: int = 2,
     output_dir: str = "./backtest_results",
+    timesteps: int = 1000,
 ) -> Tuple[List[Dict], Dict]:
     os.makedirs(output_dir, exist_ok=True)
     evaluator = PathLossEvaluator()
-    sampler = DiffusionSampler(model, device=device)
+    sampler = DiffusionSampler(model, device=device, timesteps=timesteps)
     loader = DataLoader(dataset, batch_size=batch_size, shuffle=False)
     all_metrics: List[Dict] = []
 
@@ -179,6 +183,7 @@ def backtest_on_dataset(
                     "num_scenes": len(all_metrics),
                     "num_samples_per_scene": num_samples_per_scene,
                     "diffusion_steps": diffusion_steps,
+                    "timesteps": timesteps,
                 },
             },
             handle,

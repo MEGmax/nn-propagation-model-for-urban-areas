@@ -66,6 +66,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--diffusion-steps", type=int, default=50, help="Reverse diffusion steps"
     )
+    parser.add_argument("--timesteps", type=int, default=None, help="Override diffusion timesteps from checkpoint")
     parser.add_argument(
         "--quick",
         action="store_true",
@@ -90,6 +91,7 @@ def main() -> None:
         raise FileNotFoundError(f"Checkpoint not found: {args.checkpoint}")
 
     model, payload = load_trained_model(args.checkpoint, device=device)
+    training_config = payload.get("training_config") or {}
     if payload.get("normalization_stats") is not None:
         stats = PathLossStats.from_dict(payload["normalization_stats"])
     else:
@@ -110,6 +112,7 @@ def main() -> None:
         diffusion_steps=args.diffusion_steps,
         batch_size=args.batch_size,
         output_dir=args.output_dir,
+        timesteps=args.timesteps or int(training_config.get("timesteps", 1000)),
     )
     plot_evaluation_results(metrics, aggregate, args.output_dir)
     print_evaluation_report(metrics, aggregate)

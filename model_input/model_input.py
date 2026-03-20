@@ -30,6 +30,14 @@ DEFAULT_CELL_SIZE_M = (0.15, 0.15)
 DEFAULT_MAP_CENTER_M = (0.0, 0.0)
 
 
+def is_scene_dir(scene_dir: Path) -> bool:
+    if not scene_dir.is_dir():
+        return False
+    has_elevation = any(scene_dir.glob("elevation*.npy"))
+    has_pathloss = any(scene_dir.glob("pathloss_values*.npy"))
+    return has_elevation and has_pathloss and (scene_dir / "tx_metadata.json").exists()
+
+
 def load_scene_payload(scene_dir: Path) -> dict:
     elevation_files = sorted(scene_dir.glob("elevation*.npy"))
     pathloss_files = sorted(scene_dir.glob("pathloss_values*.npy"))
@@ -107,6 +115,10 @@ def collect_stats(scene_payloads: list[dict]) -> object:
     total_pixels = 0
     pathloss_sum = 0.0
     pathloss_sq_sum = 0.0
+    elevation_sum = 0.0
+    elevation_sq_sum = 0.0
+    electrical_distance_sum = 0.0
+    electrical_distance_sq_sum = 0.0
     max_elevation_m = 0.0
     max_electrical_distance = 0.0
 
@@ -130,12 +142,25 @@ def collect_stats(scene_payloads: list[dict]) -> object:
         total_pixels += pathloss_db.size
         pathloss_sum += float(pathloss_db.sum())
         pathloss_sq_sum += float(np.square(pathloss_db).sum())
+        elevation_sum += float(elevation_rs.sum())
+        elevation_sq_sum += float(np.square(elevation_rs).sum())
+        electrical_distance_sum += float(electrical_distance.sum())
+        electrical_distance_sq_sum += float(np.square(electrical_distance).sum())
         max_elevation_m = max(max_elevation_m, float(elevation_rs.max()))
         max_electrical_distance = max(max_electrical_distance, float(electrical_distance.max()))
 
     mean_db = pathloss_sum / total_pixels
     variance = max(pathloss_sq_sum / total_pixels - mean_db**2, 1e-8)
     std_db = variance**0.5
+    elevation_mean_m = elevation_sum / total_pixels
+    elevation_variance = max(elevation_sq_sum / total_pixels - elevation_mean_m**2, 1e-8)
+    elevation_std_m = elevation_variance**0.5
+    electrical_distance_mean = electrical_distance_sum / total_pixels
+    electrical_distance_variance = max(
+        electrical_distance_sq_sum / total_pixels - electrical_distance_mean**2,
+        1e-8,
+    )
+    electrical_distance_std = electrical_distance_variance**0.5
 
     return make_stats(
         frequency_hz=frequency_hz,
@@ -143,6 +168,10 @@ def collect_stats(scene_payloads: list[dict]) -> object:
         path_loss_std_db=std_db,
         max_elevation_m=max_elevation_m,
         max_electrical_distance=max_electrical_distance,
+        elevation_mean_m=elevation_mean_m,
+        elevation_std_m=elevation_std_m,
+        electrical_distance_mean=electrical_distance_mean,
+        electrical_distance_std=electrical_distance_std,
     )
 
 
@@ -178,7 +207,15 @@ def preprocess_scenes(
     output_target_dir: Path,
     stats_path: Path,
 ) -> int:
-    scene_dirs = sorted([path for path in scenes_root.iterdir() if path.is_dir()])
+    if is_scene_dir(scenes_root):
+        scene_dirs = [scenes_root]
+    else:
+        scene_dirs = sorted([path for path in scenes_root.iterdir() if is_scene_dir(path)])
+        skipped_dirs = sorted([path.name for path in scenes_root.iterdir() if path.is_dir() and not is_scene_dir(path)])
+        if skipped_dirs:
+            preview = ", ".join(skipped_dirs[:5])
+            suffix = "..." if len(skipped_dirs) > 5 else ""
+            print(f"Skipping {len(skipped_dirs)} non-scene directories under {scenes_root}: {preview}{suffix}")
     scene_payloads = [load_scene_payload(scene_dir) for scene_dir in scene_dirs]
     stats = collect_stats(scene_payloads)
     save_stats(stats, stats_path)
@@ -248,8 +285,8 @@ def main() -> None:
     print(
         "normalization="
         f"path_loss(mean={stats.path_loss_mean_db:.6f},std={stats.path_loss_std_db:.6f}),"
-        f" elevation(max={stats.max_elevation_m:.6f}),"
-        f" electrical_distance(max={stats.max_electrical_distance:.6f})"
+        f" elevation(mean={stats.elevation_mean_m:.6f},std={stats.elevation_std_m:.6f},max={stats.max_elevation_m:.6f}),"
+        f" electrical_distance(mean={stats.electrical_distance_mean:.6f},std={stats.electrical_distance_std:.6f},max={stats.max_electrical_distance:.6f})"
     )
 
 

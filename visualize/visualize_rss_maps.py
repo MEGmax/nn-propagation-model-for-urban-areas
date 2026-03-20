@@ -85,11 +85,12 @@ def generate_visualizations(
     output_dir="pathloss_visualizations",
     num_scenes=None,
     diffusion_steps=50,
+    timesteps=1000,
 ):
     os.makedirs(output_dir, exist_ok=True)
     model.eval()
     model.to(device)
-    diffusion = Diffusion(model, timesteps=1000, device=device)
+    diffusion = Diffusion(model, timesteps=timesteps, device=device)
 
     total_scenes = len(dataset) if num_scenes is None else min(num_scenes, len(dataset))
     metrics_list = []
@@ -133,6 +134,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--output-dir", default="pathloss_visualizations", help="Output directory")
     parser.add_argument("--num-scenes", type=int, default=None, help="Number of scenes to visualize")
     parser.add_argument("--diffusion-steps", type=int, default=50, help="Reverse diffusion steps")
+    parser.add_argument("--timesteps", type=int, default=None, help="Override diffusion timesteps from checkpoint")
     parser.add_argument("--gpu", type=int, default=0, help="GPU device ID")
     return parser.parse_args()
 
@@ -146,6 +148,7 @@ def main() -> None:
         raise FileNotFoundError(f"Checkpoint not found: {args.checkpoint}")
 
     model, payload = load_trained_model(args.checkpoint, device=device)
+    training_config = payload.get("training_config") or {}
     if payload.get("normalization_stats") is not None:
         stats = PathLossStats.from_dict(payload["normalization_stats"])
     else:
@@ -164,6 +167,7 @@ def main() -> None:
         output_dir=args.output_dir,
         num_scenes=args.num_scenes,
         diffusion_steps=args.diffusion_steps,
+        timesteps=args.timesteps or int(training_config.get("timesteps", 1000)),
     )
 
 
