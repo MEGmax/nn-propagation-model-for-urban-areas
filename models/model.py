@@ -93,6 +93,19 @@ def main() -> None:
     logger.info("Model parameters: %.2fM", num_params)
     logger.info("Normalization stats: %s", stats.to_dict())
 
+    training_config = {
+        "epochs": args.epochs,
+        "batch_size": args.batch_size,
+        "lr": args.lr,
+        "timesteps": args.timesteps,
+        "save_every": args.save_every,
+        "num_workers": args.num_workers,
+        "device": device,
+        "input_dir": args.input_dir,
+        "target_dir": args.target_dir,
+        "stats_file": args.stats_file,
+    }
+
     train(
         model=model,
         dataset=dataset,
@@ -105,6 +118,7 @@ def main() -> None:
         out_dir=args.checkpoint_dir,
         normalization_stats=stats.to_dict(),
         num_workers=args.num_workers,
+        training_config=training_config,
     )
 
     print("\n" + "=" * 80)
