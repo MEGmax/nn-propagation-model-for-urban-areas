@@ -148,7 +148,7 @@ def load_tx_position(scene_dir: Path) -> tuple[float, float, float]:
  
 def process_scene(scene_dir: Path) -> None:
     scene_name = scene_dir.name
-    elevation_path = scene_dir / f"elevation_map_{scene_name}.npy"
+    elevation_path = scene_dir / f"elevation.npy"
  
     if not elevation_path.exists():
         print(f"  ⚠  Skipping {scene_name}: elevation_map not found at {elevation_path}")
