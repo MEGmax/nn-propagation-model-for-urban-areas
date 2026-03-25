@@ -47,6 +47,12 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--save-every", type=int, default=5, help="Checkpoint cadence")
     parser.add_argument("--checkpoint-dir", default="./checkpoints_70scenes", help="Checkpoint directory")
     parser.add_argument("--num-workers", type=int, default=4, help="DataLoader workers")
+    parser.add_argument(
+        "--resume",
+        type=Path,
+        default=None,
+        help="Path to checkpoint to resume from (e.g. checkpoints_70scenes/model_epoch1300.pt)",
+    )
     return parser.parse_args()
 
 
@@ -119,6 +125,7 @@ def main() -> None:
         normalization_stats=stats.to_dict(),
         num_workers=args.num_workers,
         training_config=training_config,
+        resume_from=args.resume,
     )
 
     print("\n" + "=" * 80)
