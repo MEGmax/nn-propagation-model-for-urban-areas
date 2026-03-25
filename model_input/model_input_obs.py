@@ -284,13 +284,13 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--output-input",
         type=Path,
-        default=PROJECT_ROOT / "model_input" / "data" / "training" / "input",
+        default=PROJECT_ROOT / "model_input" / "data_oops" / "training" / "input",
         help="Output directory for input tensors.",
     )
     parser.add_argument(
         "--output-target",
         type=Path,
-        default=PROJECT_ROOT / "model_input" / "data" / "training" / "target",
+        default=PROJECT_ROOT / "model_input" / "data_oops" / "training" / "target",
         help="Output directory for target tensors.",
     )
     parser.add_argument(
