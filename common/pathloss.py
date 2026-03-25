@@ -22,6 +22,9 @@ class PathLossStats:
     elevation_std_m: float | None = None
     electrical_distance_mean: float | None = None
     electrical_distance_std: float | None = None
+    obstruction_mean: float | None = None
+    obstruction_std: float | None = None
+    max_obstruction: float | None = None
 
     def to_dict(self) -> dict[str, float]:
         payload: dict[str, float] = {
@@ -37,6 +40,10 @@ class PathLossStats:
         if self.electrical_distance_mean is not None and self.electrical_distance_std is not None:
             payload["electrical_distance_mean"] = float(self.electrical_distance_mean)
             payload["electrical_distance_std"] = float(self.electrical_distance_std)
+        if self.obstruction_mean is not None and self.obstruction_std is not None and self.max_obstruction is not None:
+            payload["obstruction_mean"] = float(self.obstruction_mean)
+            payload["obstruction_std"] = float(self.obstruction_std)
+            payload["max_obstruction"] = float(self.max_obstruction)
         return payload
 
     @classmethod
@@ -74,6 +81,15 @@ class PathLossStats:
                 if payload.get("electrical_distance_std") is not None
                 else None
             ),
+            obstruction_mean=(
+                float(payload["obstruction_mean"]) if payload.get("obstruction_mean") is not None else None
+            ),
+            obstruction_std=(
+                float(payload["obstruction_std"]) if payload.get("obstruction_std") is not None else None
+            ),
+            max_obstruction=(
+                float(payload["max_obstruction"]) if payload.get("max_obstruction") is not None else None
+            ),
         )
 
 
@@ -95,6 +111,9 @@ def make_stats(
     elevation_std_m: float | None = None,
     electrical_distance_mean: float | None = None,
     electrical_distance_std: float | None = None,
+    obstruction_mean: float | None = None,
+    obstruction_std: float | None = None,
+    max_obstruction: float | None = None,
 ) -> PathLossStats:
     stats = PathLossStats(
         frequency_hz=float(frequency_hz),
@@ -110,6 +129,9 @@ def make_stats(
         electrical_distance_std=(
             float(electrical_distance_std) if electrical_distance_std is not None else None
         ),
+        obstruction_mean=float(obstruction_mean) if obstruction_mean is not None else None,
+        obstruction_std=float(obstruction_std) if obstruction_std is not None else None,
+        max_obstruction=float(max_obstruction) if max_obstruction is not None else None,
     )
     validate_stats(stats)
     return stats
@@ -185,3 +207,14 @@ def normalize_electrical_distance(electrical_distance: Any, stats: PathLossStats
             (electrical_distance - stats.electrical_distance_mean) / stats.electrical_distance_std
         ).astype(np.float32)
     return (electrical_distance / stats.max_electrical_distance).astype(np.float32)
+
+
+def normalize_obstruction(obstruction: Any, stats: PathLossStats) -> np.ndarray:
+    """Z-score normalize an obstruction map using dataset-wide mean and std."""
+    validate_stats(stats)
+    obstruction = np.asarray(obstruction, dtype=np.float32)
+    if stats.obstruction_mean is not None and stats.obstruction_std is not None:
+        return ((obstruction - stats.obstruction_mean) / stats.obstruction_std).astype(np.float32)
+    if stats.max_obstruction is not None and stats.max_obstruction > 0:
+        return (obstruction / stats.max_obstruction).astype(np.float32)
+    return obstruction
