@@ -19,15 +19,15 @@ except ModuleNotFoundError:  # pragma: no cover
 
 BASE_DIR = Path(__file__).resolve().parent
 PROJECT_ROOT = BASE_DIR.parent
-SCENE_DIR = BASE_DIR / "automated_scenes"
+SCENE_DIR = BASE_DIR / "automated_scene_300x300_70scene"
 CONFIG_PATH = PROJECT_ROOT / "configs" / "config.toml"
 
 DEFAULT_FREQUENCY_HZ = 3_500_000_000
-RADIO_MAP_CELL_SIZE_M = (0.15, 0.15)
+RADIO_MAP_CELL_SIZE_M = (1, 1)
 RADIO_MAP_CENTER_M = (0.0, 0.0, 1.5)
-RADIO_MAP_SIZE_M = (16.0, 16.0)
-RADIO_MAP_MAX_DEPTH = 32
-RADIO_MAP_SAMPLES_PER_TX = 10**8
+RADIO_MAP_SIZE_M = (300.0, 300.0)
+RADIO_MAP_MAX_DEPTH = 15
+RADIO_MAP_SAMPLES_PER_TX = 10**9
 
 H_MAX = 20.0  # metres — used only for the PNG visualisation
 
