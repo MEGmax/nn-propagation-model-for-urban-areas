@@ -1,4 +1,0 @@
-stage,status,completed,duration_seconds,return_code,error_message
-train,completed,True,8771.795873880386,0,
-backtest,completed,True,160.7585940361023,0,
-visualize,completed,True,39.53931283950806,0,

@@ -25,3 +25,35 @@ artifacts/training_run/checkpoints/*.pt
 artifacts/training_run/inference/*.npy
 
 # Ignore logs
+# Model checkpoints
+*.pt
+*.pth
+
+# Numpy arrays
+*.npy
+
+# Visualization outputs
+*.png
+pathloss_visualizations*/
+backtest_results/
+report_figures/
+
+# Data directories
+model_input/data/
+artifacts/
+# Model checkpoints
+*.pt
+*.pth
+
+# Numpy arrays
+*.npy
+
+# Visualization outputs
+*.png
+pathloss_visualizations*/
+backtest_results/
+report_figures/
+
+# Data directories
+model_input/data/
+artifacts/
