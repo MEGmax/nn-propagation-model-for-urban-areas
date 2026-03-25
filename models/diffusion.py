@@ -270,9 +270,9 @@ class RadioMapDataset(Dataset):
         input_tensor = np.load(self.input_dir / f"{scene_name}_input.npy").astype(np.float32)
         target_tensor = np.load(self.target_dir / f"{scene_name}_target.npy").astype(np.float32)
 
-        if input_tensor.ndim != 3 or input_tensor.shape[2] != 2:
+        if input_tensor.ndim != 3:
             raise ValueError(
-                f"Expected input tensor shape (H, W, 2) for {scene_name}, got {input_tensor.shape}"
+                f"Expected input tensor shape (H, W, C) for {scene_name}, got {input_tensor.shape}"
             )
         if target_tensor.ndim != 3 or target_tensor.shape[2] != 1:
             raise ValueError(
