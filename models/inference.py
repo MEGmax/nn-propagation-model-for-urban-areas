@@ -26,7 +26,7 @@ def load_checkpoint_payload(checkpoint_path: str, device: str):
         "model_state_dict": checkpoint,
         "model_config": {
             "noisy_channels": 1,
-            "cond_channels": 2,
+            "cond_channels": 3,
             "base_ch": 32,
             "channel_mults": (1, 2, 4),
             "num_res_blocks": 2,
@@ -55,7 +55,7 @@ def run_inference(
     sampling_steps: int = 50,
     timesteps: int = 1000,
 ) -> np.ndarray:
-    if cond_input.ndim != 3 or cond_input.shape[2] != 2:
+    if cond_input.ndim != 3 or cond_input.shape[2] != 3:
         raise ValueError(f"Expected conditioning tensor shape (H, W, 2), got {cond_input.shape}")
 
     cond_tensor = torch.from_numpy(cond_input).permute(2, 0, 1).unsqueeze(0).float().to(device)
@@ -101,22 +101,25 @@ def save_pathloss_png(
     plt.tight_layout()
     plt.savefig(output_path, dpi=150, bbox_inches="tight")
     plt.close()
+
+    #save npy tensor as well
+    np.save(output_path.replace(".png", ".npy"), path_loss_2d.astype(np.float32))
     print(f"Saved path-loss visualization to: {output_path}")
 
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Run inference with the path-loss diffusion model")
-    parser.add_argument("--checkpoint", default="./checkpoints/model_final.pt", help="Path to model checkpoint")
-    parser.add_argument("--input", required=True, help="Path to conditioning tensor (.npy, shape H,W,2)")
+    parser.add_argument("--checkpoint", default="./checkpoints/model_epoch1300.pt", help="Path to model checkpoint")
+    parser.add_argument("--input",default = "../model_input/data/testing/input/scene70_input.npy", help="Path to conditioning tensor (.npy, shape H,W,2)")
     parser.add_argument(
         "--stats-file",
-        default=None,
+        default="../model_input/data/training/normalization_stats.json",
         help=f"Path to normalization stats JSON; defaults to checkpoint stats or {DEFAULT_STATS_FILENAME}",
     )
-    parser.add_argument("--output-dir", default="../pathloss_visualizations", help="Directory for outputs")
+    parser.add_argument("--output-dir", default="../pathloss_visualizations_inference_70scene", help="Directory for outputs")
     parser.add_argument("--output-name", default="prediction", help="Base name for output files")
-    parser.add_argument("--sampling-steps", type=int, default=50, help="Reverse diffusion steps")
-    parser.add_argument("--timesteps", type=int, default=None, help="Override diffusion timesteps from checkpoint")
+    parser.add_argument("--sampling-steps", type=int, default=500, help="Reverse diffusion steps")
+    parser.add_argument("--timesteps", type=int, default=100, help="Override diffusion timesteps from checkpoint")
     parser.add_argument("--vmin", type=float, default=None, help="Minimum plot value")
     parser.add_argument("--vmax", type=float, default=None, help="Maximum plot value")
     parser.add_argument("--device", type=str, default=None, help="cuda or cpu")

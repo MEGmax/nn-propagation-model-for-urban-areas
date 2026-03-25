@@ -45,7 +45,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--lr", type=float, default=2e-4, help="Learning rate")
     parser.add_argument("--timesteps", type=int, default=1000, help="Diffusion timesteps")
     parser.add_argument("--save-every", type=int, default=5, help="Checkpoint cadence")
-    parser.add_argument("--checkpoint-dir", default="./checkpoints", help="Checkpoint directory")
+    parser.add_argument("--checkpoint-dir", default="./checkpoints_70scenes", help="Checkpoint directory")
     parser.add_argument("--num-workers", type=int, default=4, help="DataLoader workers")
     return parser.parse_args()
 
@@ -72,7 +72,7 @@ def main() -> None:
         raise ValueError("Dataset is empty")
 
     cond_channels, target_channels = dataset.sample_spec()
-    if cond_channels != 2 or target_channels != 1:
+    if cond_channels != 3 or target_channels != 1:
         raise ValueError(
             f"Expected dataset channels cond=2,target=1 but found cond={cond_channels},target={target_channels}"
         )
