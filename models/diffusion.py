@@ -325,6 +325,8 @@ def train(
     normalization_stats: Optional[dict] = None,
     num_workers: int = 4,
     training_config: Optional[dict] = None,
+    resume_from: Optional[Path] = None,
+    val_dataset: Optional[Dataset] = None,
 ):
     out_path = Path(out_dir)
     out_path.mkdir(parents=True, exist_ok=True)
@@ -332,6 +334,19 @@ def train(
     model.to(device)
     diffusion = Diffusion(model, timesteps=timesteps, device=device)
     optimizer = torch.optim.Adam(model.parameters(), lr=lr)
+
+    start_epoch = 0
+    if resume_from is not None:
+        if not Path(resume_from).exists():
+            raise FileNotFoundError(f"Resume checkpoint not found: {resume_from}")
+        payload = torch.load(resume_from, map_location=device)
+        model.load_state_dict(payload["model_state_dict"])
+        optimizer.load_state_dict(payload["optimizer_state_dict"])
+        start_epoch = payload.get("epoch", 0)
+        for group in optimizer.param_groups:
+            group["lr"] = lr
+        print(f"Resumed from {resume_from} at epoch {start_epoch}, lr={lr}")
+
     loader = DataLoader(
         dataset,
         batch_size=batch_size,
@@ -340,10 +355,25 @@ def train(
         pin_memory=(device != "cpu"),
     )
 
-    for epoch in range(epochs):
+    val_loader = None
+    if val_dataset is not None:
+        val_loader = DataLoader(
+            val_dataset,
+            batch_size=batch_size,
+            shuffle=False,
+            num_workers=num_workers,
+            pin_memory=(device != "cpu"),
+        )
+
+    best_val_loss = float("inf")
+    total_epochs = start_epoch + epochs
+    for epoch in range(start_epoch, total_epochs):
+        # ----------------------------------------------------------------
+        # Training
+        # ----------------------------------------------------------------
         model.train()
         epoch_loss = 0.0
-        progress = tqdm(loader, desc=f"Epoch {epoch + 1}/{epochs}")
+        progress = tqdm(loader, desc=f"Epoch {epoch + 1}/{total_epochs}")
         for batch in progress:
             target = batch["target"].to(device)
             cond = batch["input"].to(device)
@@ -356,15 +386,47 @@ def train(
             epoch_loss += loss.item() * batch_size_actual
             progress.set_postfix(loss=loss.item())
 
-        avg_loss = epoch_loss / len(dataset)
-        print(f"Epoch {epoch + 1} average loss: {avg_loss:.6f}")
+        avg_train_loss = epoch_loss / len(dataset)
+
+        # ----------------------------------------------------------------
+        # Validation
+        # ----------------------------------------------------------------
+        if val_loader is not None:
+            model.eval()
+            val_loss = 0.0
+            with torch.no_grad():
+                for batch in val_loader:
+                    target = batch["target"].to(device)
+                    cond = batch["input"].to(device)
+                    batch_size_actual = target.shape[0]
+                    t = torch.randint(0, timesteps, (batch_size_actual,), device=device).long()
+                    loss = diffusion.p_losses(target, cond, t)
+                    val_loss += loss.item() * batch_size_actual
+            avg_val_loss = val_loss / len(val_dataset)
+            print(f"Epoch {epoch + 1} | train loss: {avg_train_loss:.6f} | val loss: {avg_val_loss:.6f}")
+
+            # Save best val checkpoint
+            if avg_val_loss < best_val_loss:
+                best_val_loss = avg_val_loss
+                save_checkpoint(
+                    out_path / "model_best_val.pt",
+                    model,
+                    optimizer,
+                    epoch + 1,
+                    avg_val_loss,
+                    normalization_stats=normalization_stats,
+                    training_config=training_config,
+                )
+        else:
+            print(f"Epoch {epoch + 1} average loss: {avg_train_loss:.6f}")
+
         if (epoch + 1) % save_every == 0:
             save_checkpoint(
                 out_path / f"model_epoch{epoch + 1}.pt",
                 model,
                 optimizer,
                 epoch + 1,
-                avg_loss,
+                avg_train_loss,
                 normalization_stats=normalization_stats,
                 training_config=training_config,
             )
@@ -373,8 +435,8 @@ def train(
         out_path / "model_final.pt",
         model,
         optimizer,
-        epochs,
-        avg_loss,
+        total_epochs,
+        avg_train_loss,
         normalization_stats=normalization_stats,
         training_config=training_config,
     )

@@ -53,6 +53,18 @@ def parse_args() -> argparse.Namespace:
         default=None,
         help="Path to checkpoint to resume from (e.g. checkpoints_70scenes/model_epoch1300.pt)",
     )
+    parser.add_argument(
+        "--val-input-dir",
+        type=Path,
+        default=None,
+        help="Path to validation input tensors (optional). If provided, val loss is logged each epoch.",
+    )
+    parser.add_argument(
+        "--val-target-dir",
+        type=Path,
+        default=None,
+        help="Path to validation target tensors (optional).",
+    )
     return parser.parse_args()
 
 
@@ -76,6 +88,13 @@ def main() -> None:
     dataset = RadioMapDataset(args.input_dir, args.target_dir)
     if len(dataset) == 0:
         raise ValueError("Dataset is empty")
+
+    val_dataset = None
+    if args.val_input_dir is not None and args.val_target_dir is not None:
+        val_dataset = RadioMapDataset(args.val_input_dir, args.val_target_dir)
+        logger.info("Loaded %d validation samples", len(val_dataset))
+    else:
+        logger.info("No validation set provided — only training loss will be logged")
 
     cond_channels, target_channels = dataset.sample_spec()
     if cond_channels != 3 or target_channels != 1:
@@ -126,6 +145,7 @@ def main() -> None:
         num_workers=args.num_workers,
         training_config=training_config,
         resume_from=args.resume,
+        val_dataset=val_dataset,
     )
 
     print("\n" + "=" * 80)
