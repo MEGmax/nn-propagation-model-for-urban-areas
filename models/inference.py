@@ -109,8 +109,8 @@ def save_pathloss_png(
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Run inference with the path-loss diffusion model")
-    parser.add_argument("--checkpoint", default="./checkpoints/model_epoch1300.pt", help="Path to model checkpoint")
-    parser.add_argument("--input",default = "../model_input/data/testing/input/scene70_input.npy", help="Path to conditioning tensor (.npy, shape H,W,2)")
+    parser.add_argument("--checkpoint", default="./checkpoints/model_final.pt", help="Path to model checkpoint")
+    parser.add_argument("--input",default = "../model_input/data/testing/input/scene69_input.npy", help="Path to conditioning tensor (.npy, shape H,W,2)")
     parser.add_argument(
         "--stats-file",
         default="../model_input/data/training/normalization_stats.json",
