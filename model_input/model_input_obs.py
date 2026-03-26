@@ -227,8 +227,6 @@ def build_scene_tensors(payload: dict, stats) -> tuple[np.ndarray, np.ndarray]:
 
     if payload.get("obstruction") is not None:
         obs_rs = resize_elevation(payload["obstruction"], (height, width))
-        print("obstriction: ", obs_rs.max())
-        print(normalize_obstruction(obs_rs, stats).max())
         input_channels.append(normalize_obstruction(obs_rs, stats))
     elif stats.obstruction_mean is not None:
         print(f"  Warning: scene {payload['scene_name']} missing obstruction map, filling with zeros")
@@ -244,6 +242,7 @@ def preprocess_scenes(
     output_input_dir: Path,
     output_target_dir: Path,
     stats_path: Path,
+    existing_stats_path: Path | None = None,
 ) -> int:
     if is_scene_dir(scenes_root):
         scene_dirs = [scenes_root]
@@ -254,15 +253,22 @@ def preprocess_scenes(
             preview = ", ".join(skipped_dirs[:5])
             suffix = "..." if len(skipped_dirs) > 5 else ""
             print(f"Skipping {len(skipped_dirs)} non-scene directories under {scenes_root}: {preview}{suffix}")
+
     scene_payloads = [load_scene_payload(scene_dir) for scene_dir in scene_dirs]
-    stats = collect_stats(scene_payloads)
-    save_stats(stats, stats_path)
+
+    if existing_stats_path is not None:
+        stats = load_stats(existing_stats_path)
+        validate_stats(stats)
+        print(f"Using existing stats from: {existing_stats_path}")
+    else:
+        stats = collect_stats(scene_payloads)
+        save_stats(stats, stats_path)
+        print(f"Computed and saved stats to: {stats_path}")
 
     output_input_dir.mkdir(parents=True, exist_ok=True)
     output_target_dir.mkdir(parents=True, exist_ok=True)
 
     for payload in scene_payloads:
-        print("for scene $ ", payload)
         input_tensor, target_tensor = build_scene_tensors(payload, stats)
         scene_name = payload["scene_name"]
         np.save(output_input_dir / f"{scene_name}_input.npy", input_tensor)
@@ -299,6 +305,12 @@ def parse_args() -> argparse.Namespace:
         default=PROJECT_ROOT / "model_input" / "data" / "training" / DEFAULT_STATS_FILENAME,
         help="Output JSON file for shared normalization statistics.",
     )
+    parser.add_argument(
+        "--stats-file-in",
+        type=Path,
+        default=None,
+        help="Path to existing stats file (val/test splits). If provided, skips stat computation and reuses these stats.",
+    )
     return parser.parse_args()
 
 
@@ -313,8 +325,9 @@ def main() -> None:
         output_input_dir=args.output_input,
         output_target_dir=args.output_target,
         stats_path=args.stats_file,
+        existing_stats_path=args.stats_file_in,
     )
-    stats = load_stats(args.stats_file)
+    stats = load_stats(args.stats_file_in if args.stats_file_in else args.stats_file)
     validate_stats(stats)
 
     print(f"created_pairs={count}")
